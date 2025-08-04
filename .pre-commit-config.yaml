@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2025 Semiotic Labs
+#
+# SPDX-License-Identifier: Apache-2.0
+
+repos:
+  - repo: local
+    hooks:
+      - id: reuse-annotate
+        name: REUSE License Annotation
+        entry: bash -c 'reuse lint || (echo -e "❌ REUSE annotation failed, try running:\nannotate --license Apache-2.0 --copyright "Semiotic Labs" --year 2025 -r . --skip-unrecognized --skip-existing" && exit 1')
+        language: system
+        pass_filenames: false
+        always_run: true
