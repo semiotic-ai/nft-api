@@ -1,0 +1,197 @@
+# SPDX-FileCopyrightText: 2024 Semiotic Labs
+# SPDX-License-Identifier: Apache-2.0
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run CI weekly to catch dependency issues early
+    - cron: '0 6 * * 1'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RUSTFLAGS: "-D warnings"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.changes.outputs.rust }}
+      docker: ${{ steps.changes.outputs.docker }}
+      workflows: ${{ steps.changes.outputs.workflows }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            rust:
+              - 'crates/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'deny.toml'
+            docker:
+              - 'Dockerfile'
+              - 'docker-compose*.yml'
+            workflows:
+              - '.github/workflows/**'
+
+  format:
+    name: Format Check
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.workflows == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.89.0"
+          components: rustfmt
+      - name: Check Format
+        run: cargo fmt --all -- --check
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.89.0"
+          components: clippy
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@0.16.2
+      - name: Check licenses and advisories
+        run: cargo deny check
+      - name: Run Clippy
+        run: |
+          cargo clippy --workspace --all-targets --all-features -- \
+            -D warnings \
+            -W clippy::unwrap_used \
+            -W clippy::panic \
+            -W clippy::expect_used \
+            -W clippy::todo
+
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    strategy:
+      matrix:
+        rust: ["1.89.0", "stable"]
+        include:
+          - rust: "1.89.0"
+            toolchain-name: "msrv"
+          - rust: "stable"
+            toolchain-name: "stable"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust ${{ matrix.rust }}
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ matrix.rust }}
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.toolchain-name }}
+          cache-on-failure: true
+      - name: Run Tests
+        run: cargo test --workspace --all-features
+      - name: Run Doc Tests
+        run: cargo test --workspace --doc
+
+  build-check:
+    name: Build Check
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.89.0"
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - name: Build Release
+        run: cargo build --workspace --release
+
+  doc-check:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.89.0"
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - name: Check Documentation
+        run: |
+          cargo doc --workspace --all-features --no-deps
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+      - name: Install cargo-deadlinks
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deadlinks@0.8.1
+      - name: Check Dead Links in Documentation
+        run: cargo deadlinks --dir target/doc
+
+  final-check:
+    name: Final CI Check
+    runs-on: ubuntu-latest
+    needs: [format, lint, test, build-check, doc-check]
+    if: always()
+    steps:
+      - name: Check CI Status
+        run: |
+          if [ "${{ needs.format.result }}" != "success" ] && [ "${{ needs.format.result }}" != "skipped" ]; then
+            echo "Format check failed"
+            exit 1
+          fi
+          if [ "${{ needs.lint.result }}" != "success" ] && [ "${{ needs.lint.result }}" != "skipped" ]; then
+            echo "Lint check failed"
+            exit 1
+          fi
+          if [ "${{ needs.test.result }}" != "success" ] && [ "${{ needs.test.result }}" != "skipped" ]; then
+            echo "Test check failed"
+            exit 1
+          fi
+          if [ "${{ needs.build-check.result }}" != "success" ] && [ "${{ needs.build-check.result }}" != "skipped" ]; then
+            echo "Build check failed"
+            exit 1
+          fi
+          if [ "${{ needs.doc-check.result }}" != "success" ] && [ "${{ needs.doc-check.result }}" != "skipped" ]; then
+            echo "Doc check failed"
+            exit 1
+          fi
+          echo "All CI checks passed!"

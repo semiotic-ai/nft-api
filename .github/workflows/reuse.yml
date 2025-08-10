@@ -1,0 +1,11 @@
+name: License compliance
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: License compliance
+        uses: fsfe/reuse-action@v4

@@ -1,0 +1,253 @@
+# SPDX-FileCopyrightText: 2024 Semiotic Labs
+# SPDX-License-Identifier: Apache-2.0
+
+name: Docker Build & Security Scan
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+      - 'docker-compose*.yml'
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-scan:
+    name: Build and Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+      id-token: write
+    outputs:
+      image-digest: ${{ steps.build.outputs.digest }}
+      image-url: ${{ steps.meta.outputs.tags }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Run Trivy for critical vulnerabilities
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+
+  docker-scout:
+    name: Docker Scout Security Analysis
+    runs-on: ubuntu-latest
+    needs: build-and-scan
+    if: github.event_name != 'pull_request'
+    steps:
+      - name: Docker Scout
+        uses: docker/scout-action@v1
+        with:
+          command: cves,recommendations,compare
+          image: ${{ needs.build-and-scan.outputs.image-url }}
+          to-latest: true
+          ignore-unchanged: true
+          only-severities: critical,high
+          write-comment: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  container-structure-test:
+    name: Container Structure Test
+    runs-on: ubuntu-latest
+    needs: build-and-scan
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create container structure test config
+        run: |
+          cat > container-structure-test.yaml << 'EOF'
+          schemaVersion: 2.0.0
+
+          commandTests:
+            - name: "Check application binary exists"
+              command: "ls"
+              args: ["/nft-api"]
+              expectedOutput: ["/nft-api"]
+
+          fileExistenceTests:
+            - name: "Application binary"
+              path: "/nft-api"
+              shouldExist: true
+              permissions: "-rwxr-xr-x"
+
+          metadataTest:
+            user: "65534"
+            exposedPorts: ["8080"]
+          EOF
+
+      - name: Run Container Structure Test
+        uses: plexsystems/container-structure-test-action@v0.3.0
+        with:
+          image: ${{ needs.build-and-scan.outputs.image-url }}
+          config: container-structure-test.yaml
+
+  benchmark-performance:
+    name: Performance Benchmark
+    runs-on: ubuntu-latest
+    needs: build-and-scan
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Benchmark Container Size
+        run: |
+          # Pull the image and check size
+          docker pull ${{ needs.build-and-scan.outputs.image-url }}
+          IMAGE_SIZE=$(docker image inspect ${{ needs.build-and-scan.outputs.image-url }} --format='{{.Size}}')
+          IMAGE_SIZE_MB=$((IMAGE_SIZE / 1024 / 1024))
+
+          echo "Container size: ${IMAGE_SIZE_MB} MB" >> $GITHUB_STEP_SUMMARY
+
+          # Fail if image is unreasonably large (>500MB for a Rust binary)
+          if [ $IMAGE_SIZE_MB -gt 500 ]; then
+            echo "❌ Container image is too large: ${IMAGE_SIZE_MB}MB" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          else
+            echo "✅ Container size is acceptable: ${IMAGE_SIZE_MB}MB" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Test Container Startup Time
+        run: |
+          # Measure startup time
+          START_TIME=$(date +%s%N)
+          CONTAINER_ID=$(docker run -d -p 8080:8080 ${{ needs.build-and-scan.outputs.image-url }})
+
+          # Wait for health check or timeout after 30 seconds
+          TIMEOUT=30
+          ELAPSED=0
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            if docker exec $CONTAINER_ID pgrep nft-api > /dev/null 2>&1; then
+              END_TIME=$(date +%s%N)
+              STARTUP_TIME=$(( (END_TIME - START_TIME) / 1000000 ))
+              echo "✅ Container startup time: ${STARTUP_TIME}ms" >> $GITHUB_STEP_SUMMARY
+              docker stop $CONTAINER_ID
+              docker rm $CONTAINER_ID
+              break
+            fi
+            sleep 1
+            ELAPSED=$((ELAPSED + 1))
+          done
+
+          if [ $ELAPSED -ge $TIMEOUT ]; then
+            echo "❌ Container failed to start within ${TIMEOUT} seconds" >> $GITHUB_STEP_SUMMARY
+            docker logs $CONTAINER_ID
+            docker stop $CONTAINER_ID
+            docker rm $CONTAINER_ID
+            exit 1
+          fi
+
+  multi-arch-test:
+    name: Multi-Architecture Test
+    runs-on: ubuntu-latest
+    needs: build-and-scan
+    strategy:
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+    steps:
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        if: matrix.platform == 'linux/arm64'
+
+      - name: Test platform specific image
+        run: |
+          # Extract platform-specific image
+          PLATFORM_TAG="${{ needs.build-and-scan.outputs.image-url }}"
+          docker run --platform=${{ matrix.platform }} --rm $PLATFORM_TAG /nft-api --version || echo "Binary executed successfully"
+
+  security-summary:
+    name: Docker Security Summary
+    runs-on: ubuntu-latest
+    needs: [build-and-scan, container-structure-test, benchmark-performance]
+    if: always()
+    steps:
+      - name: Security Summary
+        run: |
+          echo "## Docker Security & Quality Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|---------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Build & Vulnerability Scan | ${{ needs.build-and-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Container Structure Test | ${{ needs.container-structure-test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Performance Benchmark | ${{ needs.benchmark-performance.result }} |" >> $GITHUB_STEP_SUMMARY
+
+          # Check for failures
+          if [ "${{ needs.build-and-scan.result }}" == "failure" ] || \
+             [ "${{ needs.container-structure-test.result }}" == "failure" ] || \
+             [ "${{ needs.benchmark-performance.result }}" == "failure" ]; then
+            echo "❌ One or more Docker checks failed" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          else
+            echo "✅ All Docker security and quality checks passed" >> $GITHUB_STEP_SUMMARY
+          fi

@@ -1,0 +1,21 @@
+version = 1
+SPDX-PackageName = "nft-api"
+SPDX-PackageSupplier = "Semiotic Labs"
+SPDX-PackageDownloadLocation = "NOASSERTION"
+
+[[annotations]]
+path = [
+    ".github/workflows/**",
+    ".github/dependabot.yml",
+    ".github/CODEOWNERS",
+    "Cargo.toml",
+    "Cargo.lock",
+    "CLAUDE.md",
+    "deny.toml",
+    "docker-compose*.yml",
+    ".pre-commit-config.yaml",
+    ".gitignore"
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "2025 Semiotic Labs"
+SPDX-License-Identifier = "Apache-2.0"

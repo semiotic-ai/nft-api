@@ -1,0 +1,283 @@
+# SPDX-FileCopyrightText: 2024 Semiotic Labs
+# SPDX-License-Identifier: Apache-2.0
+
+name: Security Scanning
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run security scans daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+env:
+  CARGO_TERM_COLOR: always
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.changes.outputs.rust }}
+      docker: ${{ steps.changes.outputs.docker }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            rust:
+              - 'crates/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'deny.toml'
+            docker:
+              - 'Dockerfile'
+              - 'docker-compose*.yml'
+
+  cargo-audit:
+    name: Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.89.0"
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit@0.21.0
+      - name: Run Security Audit
+        run: |
+          cargo audit --format json --output audit-results.json || true
+          cargo audit
+      - name: Upload Audit Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-audit-results
+          path: audit-results.json
+          retention-days: 30
+
+  cargo-deny:
+    name: Supply Chain Security
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.89.0"
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@0.16.2
+      - name: Check Licenses
+        run: cargo deny check licenses
+      - name: Check Advisories
+        run: cargo deny check advisories
+      - name: Check Banned Dependencies
+        run: cargo deny check bans
+      - name: Check Sources
+        run: cargo deny check sources
+
+  cargo-geiger:
+    name: Unsafe Code Scan
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.89.0"
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - name: Install cargo-geiger
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-geiger@0.11.7
+      - name: Scan for Unsafe Code
+        run: |
+          cargo geiger --format json --output-file geiger-report.json || true
+          cargo geiger
+      - name: Upload Geiger Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unsafe-code-report
+          path: geiger-report.json
+          retention-days: 30
+
+  semgrep:
+    name: Static Analysis
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/secrets
+            p/rust
+          generateSarif: "1"
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+        if: always()
+
+  osv-scanner:
+    name: OSV Vulnerability Scan
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run OSV-Scanner
+        uses: google/osv-scanner-action@v1
+        with:
+          scan-args: |-
+            --format=sarif
+            --output=osv-results.sarif
+            ./
+      - name: Upload SARIF file
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: osv-results.sarif
+        if: always()
+
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: moderate
+          allow-licenses: Apache-2.0, MIT, BSD-2-Clause, BSD-3-Clause, ISC, Unicode-DFS-2016, CC0-1.0, Zlib, Unlicense
+          deny-licenses: GPL-2.0, GPL-3.0, AGPL-1.0, AGPL-3.0, LGPL-2.0, LGPL-2.1, LGPL-3.0
+
+  trivy-fs:
+    name: Filesystem Security Scan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Trivy vulnerability scanner in fs mode
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-fs-results.sarif'
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-fs-results.sarif'
+
+  supply-chain-security:
+    name: SLSA Supply Chain Security
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.89.0"
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: ./
+          format: cyclonedx-json
+          output-file: ./sbom.cyclonedx.json
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: software-bill-of-materials
+          path: ./sbom.cyclonedx.json
+          retention-days: 90
+
+  secret-scanning:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: TruffleHog OSS
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: main
+          head: HEAD
+          extra_args: --debug --only-verified
+
+  security-summary:
+    name: Security Summary
+    runs-on: ubuntu-latest
+    needs: [cargo-audit, cargo-deny, cargo-geiger, semgrep, osv-scanner, trivy-fs, supply-chain-security, secret-scanning]
+    if: always()
+    steps:
+      - name: Security Check Summary
+        run: |
+          echo "## Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|---------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Dependency Vulnerability Scan | ${{ needs.cargo-audit.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Supply Chain Security | ${{ needs.cargo-deny.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Unsafe Code Scan | ${{ needs.cargo-geiger.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Static Analysis | ${{ needs.semgrep.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| OSV Vulnerability Scan | ${{ needs.osv-scanner.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Filesystem Security Scan | ${{ needs.trivy-fs.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SLSA Supply Chain Security | ${{ needs.supply-chain-security.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Secret Scanning | ${{ needs.secret-scanning.result }} |" >> $GITHUB_STEP_SUMMARY
+
+          # Check for any failures
+          if [ "${{ needs.cargo-audit.result }}" == "failure" ] || \
+             [ "${{ needs.cargo-deny.result }}" == "failure" ] || \
+             [ "${{ needs.cargo-geiger.result }}" == "failure" ] || \
+             [ "${{ needs.semgrep.result }}" == "failure" ] || \
+             [ "${{ needs.osv-scanner.result }}" == "failure" ] || \
+             [ "${{ needs.trivy-fs.result }}" == "failure" ] || \
+             [ "${{ needs.supply-chain-security.result }}" == "failure" ] || \
+             [ "${{ needs.secret-scanning.result }}" == "failure" ]; then
+            echo "❌ One or more security checks failed" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          else
+            echo "✅ All security checks passed" >> $GITHUB_STEP_SUMMARY
+          fi
