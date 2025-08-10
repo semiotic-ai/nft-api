@@ -1,0 +1,5 @@
+# Enable nightly features required for formatting imports
+unstable_features = true
+imports_granularity = "Crate"
+group_imports = "StdExternalCrate"
+reorder_modules = true

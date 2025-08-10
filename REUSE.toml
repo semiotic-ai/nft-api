@@ -12,6 +12,7 @@ path = [
     "Cargo.lock",
     "CLAUDE.md",
     "deny.toml",
+    "rustfmt.toml",
     "docker-compose*.yml",
     ".pre-commit-config.yaml",
     ".gitignore"
