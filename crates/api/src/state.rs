@@ -61,7 +61,7 @@ mod tests {
     use crate::dependencies::DefaultDependencies;
 
     #[test]
-    fn test_server_state_creation() {
+    fn server_state_creation() {
         let config = ServerConfig::default();
         let deps = Arc::new(DefaultDependencies::new());
         let state = ServerState::new(config, deps, CancellationToken::new());
@@ -70,7 +70,7 @@ mod tests {
     }
 
     #[test]
-    fn test_server_state_with_cancellation_token() {
+    fn server_state_with_cancellation_token() {
         let config = ServerConfig::default();
         let deps = Arc::new(DefaultDependencies::new());
         let token = CancellationToken::new();

@@ -95,7 +95,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_default_dependencies() -> ServerResult<()> {
+    async fn default_dependencies() -> ServerResult<()> {
         let deps = DefaultDependencies::new();
         assert_eq!(deps.service_name(), "nft-api");
 

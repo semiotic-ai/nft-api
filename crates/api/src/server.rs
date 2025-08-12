@@ -293,7 +293,7 @@ mod tests {
     use crate::config::Environment;
 
     #[tokio::test]
-    async fn test_server_creation() -> ServerResult<()> {
+    async fn server_creation() -> ServerResult<()> {
         let config = ServerConfig::for_testing();
         let server = Server::new(config, ShutdownConfig::default())?;
         assert_eq!(server.config().environment, Environment::Testing);
@@ -302,7 +302,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_programmatic_shutdown() -> ServerResult<()> {
+    async fn programmatic_shutdown() -> ServerResult<()> {
         let config = ServerConfig::for_testing();
         let server = Server::new(config, ShutdownConfig::default())?;
 
@@ -315,7 +315,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_shutdown_config_default() {
+    async fn shutdown_config_default() {
         let config = ShutdownConfig::default();
         assert_eq!(config.graceful_timeout, Duration::from_secs(30));
         assert_eq!(config.force_timeout, Duration::from_secs(5));

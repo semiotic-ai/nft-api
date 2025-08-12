@@ -253,7 +253,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_timeout_validation() {
+    fn timeout_validation() {
         // Invalid timeout values should fail to construct
         assert!(TimeoutSeconds::new(0).is_err());
         assert!(TimeoutSeconds::new(400).is_err());
@@ -265,7 +265,7 @@ mod tests {
     }
 
     #[test]
-    fn test_server_port_validation() {
+    fn server_port_validation() {
         // Port 0 should only be valid in testing environment
         assert!(ServerPort::new(0, Environment::Testing).is_ok());
         assert!(ServerPort::new(0, Environment::Development).is_err());
@@ -277,7 +277,7 @@ mod tests {
     }
 
     #[test]
-    fn test_environment_display() {
+    fn environment_display() {
         assert_eq!(Environment::Production.to_string(), "production");
         assert_eq!(Environment::Development.to_string(), "development");
         assert_eq!(Environment::Testing.to_string(), "testing");

@@ -10,7 +10,7 @@ use serde_json::json;
 use api::{Server, ServerConfig, ShutdownConfig};
 
 #[tokio::test]
-async fn test_contract_status_valid_addresses() {
+async fn contract_status_valid_addresses() {
     // Create test server
     let config = ServerConfig::for_testing();
     let shutdown_config = ShutdownConfig::default();
@@ -42,7 +42,7 @@ async fn test_contract_status_valid_addresses() {
 }
 
 #[tokio::test]
-async fn test_contract_status_invalid_addresses() {
+async fn contract_status_invalid_addresses() {
     let config = ServerConfig::for_testing();
     let shutdown_config = ShutdownConfig::default();
     let (addr, _) = Server::new(config, shutdown_config)
