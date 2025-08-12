@@ -15,6 +15,7 @@ path = [
     "rustfmt.toml",
     "docker-compose*.yml",
     ".pre-commit-config.yaml",
+    "config.*.json",
     ".gitignore"
 ]
 precedence = "closest"

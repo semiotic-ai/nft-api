@@ -2,8 +2,39 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-//! Crate docs placeholder.
+//! NFT API Server
+//!
+//! A blockchain token management API service.
 
-fn main() {
-    println!("Hello, world!");
+use std::time::Duration;
+
+use anyhow::Result;
+use api::{Server, ServerConfig, ShutdownConfig};
+use tracing::info;
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    // Initialize tracing with environment-based filtering
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+
+    info!("Starting NFT API server with coordinated shutdown support");
+
+    let config = ServerConfig::from_env()?;
+
+    let shutdown_config = ShutdownConfig {
+        graceful_timeout: Duration::from_secs(30),
+        force_timeout: Duration::from_secs(5),
+    };
+
+    let server = Server::new(config, shutdown_config)?;
+
+    tokio::spawn(async move { server.run().await }).await??;
+
+    Ok(())
 }
