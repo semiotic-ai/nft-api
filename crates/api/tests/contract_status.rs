@@ -4,10 +4,9 @@
 
 //! Integration tests for the contract status endpoint
 
+use api::{Server, ServerConfig, ShutdownConfig};
 use axum::http::StatusCode;
 use serde_json::json;
-
-use api::{Server, ServerConfig, ShutdownConfig};
 
 #[tokio::test]
 async fn contract_status_valid_addresses() {
@@ -71,4 +70,35 @@ async fn contract_status_invalid_addresses() {
 
     // Should return 422 Unprocessable Entity for invalid addresses (Axum's default for deserialization errors)
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn contract_status_empty_addresses() {
+    let config = ServerConfig::for_testing();
+    let shutdown_config = ShutdownConfig::default();
+    let (addr, _) = Server::new(config, shutdown_config)
+        .expect("Failed to create server")
+        .run_for_testing()
+        .await
+        .expect("Failed to start test server");
+
+    let client = reqwest::Client::new();
+
+    // Empty addresses array
+    let empty_request = json!({
+        "addresses": []
+    });
+
+    let response = client
+        .post(format!("http://{addr}/v1/contract/status"))
+        .json(&empty_request)
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    // Should return 400 Bad Request for empty addresses array
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let response_text = response.text().await.expect("Failed to read response");
+    assert!(response_text.contains("addresses list cannot be empty"));
 }

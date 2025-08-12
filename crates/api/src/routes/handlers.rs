@@ -27,20 +27,28 @@ pub async fn health_handler(
 /// Contains the contract address(es) to analyze for spam classification.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ContractStatusRequest {
-    /// Contract addresses to analyze
+    /// Contract addresses to analyze (must not be empty)
     addresses: Vec<Address>,
 }
 
-/// Contract spam analysis response
-///
-/// Returns the results of blockchain contract spam classification analysis.
-#[derive(Debug, Serialize, Deserialize)]
+impl ContractStatusRequest {
+    /// Validates that the request contains at least one address
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self.addresses.is_empty() {
+            return Err("addresses list cannot be empty");
+        }
+        Ok(())
+    }
+}
+
+/// Response from the contract status endpoint
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ContractStatusResponse {
-    /// Whether the contract is classified as spam
+    /// Whether the contract is identified as spam
     pub contract_spam_status: bool,
-    /// Human-readable explanation of the classification
+    /// Human-readable message explaining the classification result
     pub message: String,
-    /// The analyzed contract address
+    /// The contract address that was analyzed
     pub address: Address,
 }
 
@@ -59,7 +67,15 @@ pub struct ContractStatusResponse {
 /// Returns `ServerError` if contract analysis fails or external APIs are unavailable.
 pub async fn contract_status_handler(
     State(_state): State<ServerState>,
-    Json(_contract_status): Json<ContractStatusRequest>,
-) -> Result<impl IntoResponse, ServerError> {
-    Ok(())
+    Json(contract_status): Json<ContractStatusRequest>,
+) -> Result<Json<ContractStatusResponse>, ServerError> {
+    contract_status
+        .validate()
+        .map_err(|msg| ServerError::ValidationError(msg.to_string()))?;
+
+    Ok(Json(ContractStatusResponse {
+        contract_spam_status: true,
+        message: "testing".to_owned(),
+        address: alloy_primitives::address!("0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"),
+    }))
 }

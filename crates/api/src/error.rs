@@ -84,6 +84,10 @@ pub enum ServerError {
         /// Error message
         message: String,
     },
+
+    /// Input validation errors
+    #[error("Validation error: {0}")]
+    ValidationError(String),
 }
 
 /// Result type for server operations
@@ -101,6 +105,7 @@ impl IntoResponse for ServerError {
             | ServerError::Signal { .. } => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             ServerError::Dependency { .. } => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
             ServerError::Timeout { .. } => (StatusCode::REQUEST_TIMEOUT, self.to_string()),
+            ServerError::ValidationError(..) => (StatusCode::BAD_REQUEST, self.to_string()),
         };
 
         let body = Json(serde_json::json!({
