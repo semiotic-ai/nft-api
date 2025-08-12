@@ -87,7 +87,7 @@ impl TimeoutSeconds {
     /// Returns an error if timeout is 0 or greater than 300 seconds
     pub fn new(seconds: u64) -> Result<Self> {
         ensure!(seconds != 0, "timeout must be greater than 0");
-        ensure!(seconds < 300, "timeout cannot exceed 300");
+        ensure!(seconds <= 300, "timeout cannot exceed 300");
         Ok(Self(Duration::from_secs(seconds)))
     }
 

@@ -10,12 +10,12 @@
 //! - [`dependencies`]: Dependency injection framework
 //! - [`state`]: Shared application state management with cancellation token support
 //! - [`server`]: Main server implementation, lifecycle, and coordinated shutdown
-//! - [`handlers`]: HTTP request handlers with cancellation awareness
+//! - [`routes`]: Route configuration and HTTP request handlers with cancellation awareness
 
 pub mod config;
 pub mod dependencies;
 pub mod error;
-pub mod handlers;
+pub mod routes;
 pub mod server;
 pub mod state;
 

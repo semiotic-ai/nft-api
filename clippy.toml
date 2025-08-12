@@ -1,0 +1,8 @@
+# Allow `.expect()` in test functions or #[cfg(test)] code
+allow-expect-in-tests = true
+# Allow `.unwrap()` in test functions
+allow-unwrap-in-tests = true
+# Allow panic! and unimplemented! macros in test functions
+allow-panic-in-tests = true
+# Allow println! and dbg! in test functions (for debugging)
+allow-print-in-tests = true

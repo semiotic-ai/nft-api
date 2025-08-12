@@ -13,6 +13,7 @@ path = [
     "CLAUDE.md",
     "deny.toml",
     "rustfmt.toml",
+    "clippy.toml",
     "docker-compose*.yml",
     ".pre-commit-config.yaml",
     "config.*.json",

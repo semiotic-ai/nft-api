@@ -10,7 +10,7 @@
 
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
-use axum::{Router, http::HeaderName, routing::get};
+use axum::{Router, http::HeaderName};
 use hyper::Request;
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
@@ -27,7 +27,7 @@ use crate::{
     config::ServerConfig,
     dependencies::{DefaultDependencies, Dependencies},
     error::{ServerError, ServerResult},
-    handlers::health_handler,
+    routes::create_routes,
     state::ServerState,
 };
 
@@ -130,10 +130,7 @@ impl Server {
             .layer(CorsLayer::permissive())
             .layer(TimeoutLayer::new(timeout_duration));
 
-        Router::new()
-            .route("/health", get(health_handler))
-            .layer(middleware)
-            .with_state(state)
+        create_routes().layer(middleware).with_state(state)
     }
 
     /// Run the server with coordinated graceful shutdown
@@ -298,7 +295,7 @@ mod tests {
     #[tokio::test]
     async fn test_server_creation() -> ServerResult<()> {
         let config = ServerConfig::for_testing();
-        let server = Server::new(config)?;
+        let server = Server::new(config, ShutdownConfig::default())?;
         assert_eq!(server.config().environment, Environment::Testing);
         assert!(!server.cancellation_token().is_cancelled());
         Ok(())
@@ -307,7 +304,7 @@ mod tests {
     #[tokio::test]
     async fn test_programmatic_shutdown() -> ServerResult<()> {
         let config = ServerConfig::for_testing();
-        let server = Server::new(config)?;
+        let server = Server::new(config, ShutdownConfig::default())?;
 
         assert!(!server.cancellation_token().is_cancelled());
 
