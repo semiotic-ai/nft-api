@@ -8,6 +8,8 @@
 //! including health checks, API endpoints, and cancellation-aware handlers
 //! for coordinated graceful shutdown.
 
+use std::collections::HashMap;
+
 use alloy_primitives::Address;
 use axum::{Json, extract::State, response::IntoResponse};
 use serde::{Deserialize, Serialize};
@@ -41,15 +43,22 @@ impl ContractStatusRequest {
     }
 }
 
-/// Response from the contract status endpoint
+/// Individual contract analysis result
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ContractStatusResponse {
+pub struct ContractStatusResult {
     /// Whether the contract is identified as spam
     pub contract_spam_status: bool,
     /// Human-readable message explaining the classification result
     pub message: String,
-    /// The contract address that was analyzed
-    pub address: Address,
+}
+
+/// Response from the contract status endpoint
+/// Maps contract addresses to their analysis results
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ContractStatusResponse {
+    /// Analysis results keyed by contract address
+    #[serde(flatten)]
+    pub results: HashMap<Address, ContractStatusResult>,
 }
 
 /// Contract status analysis
@@ -73,9 +82,19 @@ pub async fn contract_status_handler(
         .validate()
         .map_err(|msg| ServerError::ValidationError(msg.to_string()))?;
 
-    Ok(Json(ContractStatusResponse {
-        contract_spam_status: true,
-        message: "testing".to_owned(),
-        address: alloy_primitives::address!("0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"),
-    }))
+    let results = contract_status
+        .addresses
+        .into_iter()
+        .map(|address| {
+            (
+                address,
+                ContractStatusResult {
+                    contract_spam_status: true,
+                    message: "testing".to_owned(),
+                },
+            )
+        })
+        .collect();
+
+    Ok(Json(ContractStatusResponse { results }))
 }

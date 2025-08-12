@@ -8,6 +8,38 @@ SPDX-License-Identifier: Apache-2.0
 
 A secure NFT API service built with Rust, designed for blockchain token management with strict security and code quality standards.
 
+## API Endpoints
+
+### Health Check
+- **GET** `/health` - Server health status
+
+### Contract Analysis (v1)
+- **POST** `/v1/contract/status` - Analyze contract addresses for spam classification
+
+#### Contract Status Request
+```json
+{
+  "addresses": [
+    "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+    "0x1234567890123456789012345678901234567890"
+  ]
+}
+```
+
+#### Contract Status Response
+```json
+{
+  "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd": {
+    "contract_spam_status": true,
+    "message": "Contract analysis result"
+  },
+  "0x1234567890123456789012345678901234567890": {
+    "contract_spam_status": false,
+    "message": "Contract analysis result"
+  }
+}
+```
+
 ## Quick Start
 
 1. **Build the project:**
