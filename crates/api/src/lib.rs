@@ -14,7 +14,9 @@
 
 pub mod config;
 pub mod dependencies;
+pub mod docs;
 pub mod error;
+pub mod openapi;
 pub mod routes;
 pub mod server;
 pub mod state;

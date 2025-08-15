@@ -16,6 +16,7 @@ use std::{
 use anyhow::{Result, anyhow, ensure};
 use config::{Config, ConfigError, Environment as ConfigEnv, File};
 use serde::{Deserialize, Deserializer, Serialize, de};
+use utoipa::ToSchema;
 
 use crate::error::{ServerError, ServerResult};
 
@@ -124,7 +125,7 @@ impl Default for TimeoutSeconds {
 }
 
 /// Environment types for configuration
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Environment {
     /// Production environment

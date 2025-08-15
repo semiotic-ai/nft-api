@@ -36,6 +36,7 @@ anyhow.workspace = true
 uuid = { workspace = true, features = ["v7", "serde"] }
 tokio-util = { workspace = true }
 alloy-primitives = { workspace = true, features = ["serde"] }
+utoipa = { workspace = true, features = ["axum_extras"] }
 
 [dev-dependencies]
 reqwest = { version = "0.12.23", features = ["json"] }

@@ -10,6 +10,7 @@
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use crate::{config::Environment, error::ServerResult};
 
@@ -29,7 +30,7 @@ pub struct DefaultDependencies {
 }
 
 /// Health status of a service or dependency
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 pub enum HealthStatus {
     /// Service is fully operational and responding normally
     Up,
@@ -48,7 +49,7 @@ pub enum HealthStatus {
 }
 
 /// Health check status
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct HealthCheck {
     /// Service status
     pub status: HealthStatus,

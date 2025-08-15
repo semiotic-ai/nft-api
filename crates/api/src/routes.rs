@@ -14,7 +14,10 @@ use axum::{
 };
 use handlers::{contract_status_handler, health_handler};
 
-use crate::state::ServerState;
+use crate::{
+    openapi::{openapi_spec, swagger_ui},
+    state::ServerState,
+};
 
 /// Create application routes
 pub fn create_routes() -> Router<ServerState> {
@@ -23,5 +26,7 @@ pub fn create_routes() -> Router<ServerState> {
 
     Router::new()
         .route("/health", get(health_handler))
+        .route("/api-doc/openapi.json", get(openapi_spec))
+        .route("/swagger-ui", get(swagger_ui))
         .merge(v1)
 }
