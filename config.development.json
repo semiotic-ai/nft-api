@@ -3,13 +3,36 @@
   "port": 3000,
   "timeout_seconds": 30,
   "environment": "development",
+  "external_apis": {
+    "moralis": {
+      "base_url": "https://deep-index.moralis.io/api/v2",
+      "api_key": "REPLACE_WITH_YOUR_MORALIS_API_KEY",
+      "timeout_seconds": 30,
+      "health_check_timeout_seconds": 5,
+      "max_retries": 3,
+      "enabled": false
+    },
+    "pinax": {
+      "endpoint": "https://api.pinax.network/sql",
+      "api_user": "REPLACE_WITH_YOUR_PINAX_USERNAME",
+      "api_auth": "REPLACE_WITH_YOUR_PINAX_AUTH_TOKEN",
+      "db_name": "mainnet:evm-nft-tokens@v0.6.2",
+      "timeout_seconds": 30,
+      "health_check_timeout_seconds": 5,
+      "max_retries": 3,
+      "enabled": false
+    }
+  },
+  "rate_limiting": {
+    "enabled": true,
+    "requests_per_minute": 60
+  },
   "extensions": {
     "log_level": "debug",
     "enable_cors": true,
     "enable_request_logging": true,
     "enable_metrics": false,
     "jwt_secret": "dev-secret-key-not-for-production",
-    "rate_limit_requests_per_minute": 100,
     "enable_swagger": true
   }
 }

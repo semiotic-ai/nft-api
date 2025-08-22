@@ -11,6 +11,10 @@
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use axum::{Router, http::HeaderName};
+use external_apis::{
+    ApiRegistry, MoralisClient, MoralisConfig as ExternalMoralisConfig, PinaxClient,
+    PinaxConfig as ExternalPinaxConfig,
+};
 use hyper::Request;
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
@@ -25,13 +29,16 @@ use tracing::{error, info, info_span, warn};
 
 use crate::{
     config::ServerConfig,
-    dependencies::{DefaultDependencies, Dependencies},
     error::{ServerError, ServerResult},
+    middleware::RateLimiter,
     routes::create_routes,
     state::ServerState,
 };
 
+// Server constants
 const REQUEST_ID_HEADER: HeaderName = HeaderName::from_static("x-request-id");
+const DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS: u64 = 30;
+const DEFAULT_FORCE_SHUTDOWN_TIMEOUT_SECONDS: u64 = 5;
 
 /// Configuration for server shutdown behavior
 #[derive(Debug, Clone)]
@@ -45,8 +52,8 @@ pub struct ShutdownConfig {
 impl Default for ShutdownConfig {
     fn default() -> Self {
         Self {
-            graceful_timeout: Duration::from_secs(30),
-            force_timeout: Duration::from_secs(5),
+            graceful_timeout: Duration::from_secs(DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS),
+            force_timeout: Duration::from_secs(DEFAULT_FORCE_SHUTDOWN_TIMEOUT_SECONDS),
         }
     }
 }
@@ -74,29 +81,77 @@ impl Server {
     ///
     /// Returns `ServerError::Config` if the configuration is invalid.
     pub fn new(config: ServerConfig, shutdown_config: ShutdownConfig) -> ServerResult<Self> {
-        Self::with_dependencies(
-            config,
-            shutdown_config,
-            Arc::new(DefaultDependencies::new()),
-        )
+        let api_registry = Self::create_api_registry_from_config(&config);
+        Self::with_api_registry(config, shutdown_config, Arc::new(api_registry))
     }
 
-    /// Create server with custom dependencies for dependency injection
+    /// Create API registry from server configuration
+    fn create_api_registry_from_config(config: &ServerConfig) -> ApiRegistry {
+        // Initialize MoralisClient if enabled
+        let moralis_client = if config.external_apis.moralis.enabled {
+            let moralis_config = ExternalMoralisConfig {
+                base_url: config.external_apis.moralis.base_url.value().to_string(),
+                api_key: config.external_apis.moralis.api_key.value().to_string(),
+                timeout_seconds: config
+                    .external_apis
+                    .moralis
+                    .timeout_seconds
+                    .value()
+                    .as_secs(),
+                health_check_timeout_seconds: config
+                    .external_apis
+                    .moralis
+                    .health_check_timeout_seconds
+                    .value()
+                    .as_secs(),
+                max_retries: config.external_apis.moralis.max_retries,
+            };
+            Some(MoralisClient::new(moralis_config).expect("Failed to create Moralis client"))
+        } else {
+            None
+        };
+
+        // Initialize PinaxClient if enabled
+        let pinax_client = if config.external_apis.pinax.enabled {
+            let pinax_config = ExternalPinaxConfig::new(
+                config.external_apis.pinax.endpoint.value(),
+                config.external_apis.pinax.api_user.value(),
+                config.external_apis.pinax.api_auth.value(),
+                &config.external_apis.pinax.db_name,
+                config.external_apis.pinax.timeout_seconds.value().as_secs(),
+                config
+                    .external_apis
+                    .pinax
+                    .health_check_timeout_seconds
+                    .value()
+                    .as_secs(),
+                config.external_apis.pinax.max_retries,
+            )
+            .expect("Failed to create Pinax config");
+            Some(PinaxClient::new(pinax_config).expect("Failed to create Pinax client"))
+        } else {
+            None
+        };
+
+        ApiRegistry::with_clients(moralis_client, pinax_client)
+    }
+
+    /// Create server with custom API registry for dependency injection
     ///
     /// # Errors
     ///
     /// Returns `ServerError::Config` if the configuration is invalid.
-    pub fn with_dependencies(
+    pub fn with_api_registry(
         config: ServerConfig,
         graceful_shutdown_config: ShutdownConfig,
-        dependencies: Arc<dyn Dependencies>,
+        api_registry: Arc<ApiRegistry>,
     ) -> ServerResult<Self> {
         // Configuration validation is now built into the types
 
         let cancellation_token = CancellationToken::new();
         let state = ServerState::new(
             config.clone(),
-            dependencies,
+            api_registry,
             cancellation_token.child_token(),
         );
         let router = Self::create_router(state.clone());
@@ -114,6 +169,9 @@ impl Server {
     fn create_router(state: ServerState) -> Router {
         let timeout_duration = state.config().timeout_seconds.value();
 
+        // Create rate limiter from configuration
+        let rate_limiter = RateLimiter::new(state.config().rate_limiting.clone());
+
         let middleware = ServiceBuilder::new()
             .layer(SetRequestIdLayer::new(REQUEST_ID_HEADER, MakeRequestUuid))
             .layer(
@@ -130,7 +188,9 @@ impl Server {
             .layer(CorsLayer::permissive())
             .layer(TimeoutLayer::new(timeout_duration));
 
-        create_routes().layer(middleware).with_state(state)
+        create_routes(rate_limiter)
+            .layer(middleware)
+            .with_state(state)
     }
 
     /// Run the server with coordinated graceful shutdown
@@ -317,7 +377,13 @@ mod tests {
     #[tokio::test]
     async fn shutdown_config_default() {
         let config = ShutdownConfig::default();
-        assert_eq!(config.graceful_timeout, Duration::from_secs(30));
-        assert_eq!(config.force_timeout, Duration::from_secs(5));
+        assert_eq!(
+            config.graceful_timeout,
+            Duration::from_secs(DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS)
+        );
+        assert_eq!(
+            config.force_timeout,
+            Duration::from_secs(DEFAULT_FORCE_SHUTDOWN_TIMEOUT_SECONDS)
+        );
     }
 }

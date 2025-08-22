@@ -23,7 +23,6 @@ axum = { workspace = true, features = ["macros", "tracing"] }
 chrono = { workspace = true }
 hyper = { workspace = true }
 config = { workspace = true }
-hyper-util = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "signal"] }
@@ -33,10 +32,11 @@ tower-http = { workspace = true, features = ["cors", "timeout", "trace", "reques
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 anyhow.workspace = true
-uuid = { workspace = true, features = ["v7", "serde"] }
 tokio-util = { workspace = true }
 alloy-primitives = { workspace = true, features = ["serde"] }
 utoipa = { workspace = true, features = ["axum_extras"] }
+external-apis = { path = "../external-apis" }
+api-client = { path = "../api-client" }
 
 [dev-dependencies]
 reqwest = { version = "0.12.23", features = ["json"] }

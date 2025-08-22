@@ -6,8 +6,6 @@
 //!
 //! A blockchain token management API service.
 
-use std::time::Duration;
-
 use anyhow::Result;
 use api::{Server, ServerConfig, ShutdownConfig};
 use tracing::info;
@@ -26,13 +24,11 @@ async fn main() -> Result<()> {
 
     let config = ServerConfig::from_env()?;
 
-    let shutdown_config = ShutdownConfig {
-        graceful_timeout: Duration::from_secs(30),
-        force_timeout: Duration::from_secs(5),
-    };
+    let shutdown_config = ShutdownConfig::default();
 
     let server = Server::new(config, shutdown_config)?;
 
+    // NOTE: the `#[tokio::main]` task does not run a worker future, we must spawn
     tokio::spawn(async move { server.run().await }).await??;
 
     Ok(())

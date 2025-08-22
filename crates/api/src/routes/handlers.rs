@@ -13,9 +13,13 @@ use std::collections::HashMap;
 use alloy_primitives::Address;
 use axum::{Json, extract::State, response::IntoResponse};
 use serde::{Deserialize, Serialize};
+use tracing::error;
 use utoipa::ToSchema;
 
-use crate::{dependencies::HealthCheck, error::ServerError, state::ServerState};
+use crate::{
+    error::ServerError,
+    state::{HealthCheck, ServerState},
+};
 
 /// Health check endpoint handler
 #[utoipa::path(
@@ -23,7 +27,7 @@ use crate::{dependencies::HealthCheck, error::ServerError, state::ServerState};
     path = "/health",
     tag = "health",
     summary = "Health check endpoint",
-    description = "Returns the current health status of the API service including version and environment information.",
+    description = "Returns the current health status of the API service including version, environment information, and status of all registered API clients (Moralis, Pinax, etc.).",
     responses(
         (status = 200, description = "Service is healthy", body = HealthCheck),
         (status = 503, description = "Service unavailable", body = String)
@@ -32,7 +36,7 @@ use crate::{dependencies::HealthCheck, error::ServerError, state::ServerState};
 pub async fn health_handler(
     State(state): State<ServerState>,
 ) -> Result<impl IntoResponse, ServerError> {
-    let health = state.dependencies().health_check()?;
+    let health = state.health_check().await?;
     Ok(Json(health))
 }
 
@@ -102,26 +106,51 @@ pub struct ContractStatusResponse {
     )
 )]
 pub async fn contract_status_handler(
-    State(_state): State<ServerState>,
+    State(state): State<ServerState>,
     Json(contract_status): Json<ContractStatusRequest>,
 ) -> Result<Json<ContractStatusResponse>, ServerError> {
     contract_status
         .validate()
         .map_err(|msg| ServerError::ValidationError(msg.to_string()))?;
 
-    let results = contract_status
-        .addresses
-        .into_iter()
-        .map(|address| {
-            (
-                address,
-                ContractStatusResult {
-                    contract_spam_status: true,
-                    message: "testing".to_owned(),
-                },
-            )
-        })
-        .collect();
+    let api_registry = state.api_registry();
+    let mut results = HashMap::new();
+
+    for address in contract_status.addresses {
+        match api_registry.get_contract_metadata(address).await {
+            Ok(Some(_metadata)) => {
+                results.insert(
+                    address,
+                    ContractStatusResult {
+                        contract_spam_status: false,
+                        message: "Contract metadata found, analysis indicates not spam".to_string(),
+                    },
+                );
+            }
+            Ok(None) => {
+                results.insert(
+                    address,
+                    ContractStatusResult {
+                        contract_spam_status: false,
+                        message: "No data found for the contract".to_string(),
+                    },
+                );
+            }
+            Err(e) => {
+                // Log the detailed error for debugging but don't expose it to clients
+                error!("Failed to fetch contract metadata for {}: {}", address, e);
+
+                results.insert(
+                    address,
+                    ContractStatusResult {
+                        contract_spam_status: false,
+                        message: "Unable to retrieve contract data from external services"
+                            .to_string(),
+                    },
+                );
+            }
+        }
+    }
 
     Ok(Json(ContractStatusResponse { results }))
 }

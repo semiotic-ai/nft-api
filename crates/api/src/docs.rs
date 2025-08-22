@@ -13,8 +13,8 @@
 use utoipa::OpenApi;
 
 use crate::{
-    dependencies::{HealthCheck, HealthStatus},
     routes::handlers::{ContractStatusRequest, ContractStatusResponse, ContractStatusResult},
+    state::{HealthCheck, HealthStatus},
 };
 
 /// `OpenAPI` documentation specification

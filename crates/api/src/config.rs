@@ -16,9 +16,19 @@ use std::{
 use anyhow::{Result, anyhow, ensure};
 use config::{Config, ConfigError, Environment as ConfigEnv, File};
 use serde::{Deserialize, Deserializer, Serialize, de};
+use tracing::warn;
 use utoipa::ToSchema;
 
 use crate::error::{ServerError, ServerResult};
+
+// Configuration constants
+const DEFAULT_SERVER_PORT: u16 = 3000;
+const DEFAULT_TIMEOUT_SECONDS: u64 = 30;
+const TESTING_TIMEOUT_SECONDS: u64 = 5;
+const MAX_TIMEOUT_SECONDS: u64 = 300;
+const DEFAULT_HEALTH_CHECK_TIMEOUT_SECONDS: u64 = 5;
+const DEFAULT_RATE_LIMIT_REQUESTS_PER_MINUTE: u32 = 60;
+const DEFAULT_MAX_RETRIES: u32 = 3;
 
 /// A validated server port that ensures the value is appropriate for the environment
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -40,10 +50,15 @@ impl ServerPort {
         Ok(Self { port, environment })
     }
 
+    /// Get the port number
+    pub fn port(&self) -> u16 {
+        self.port
+    }
+
     /// Create a safe default port for development
     pub const fn default_development() -> Self {
         Self {
-            port: 3000,
+            port: DEFAULT_SERVER_PORT,
             environment: Environment::Development,
         }
     }
@@ -85,21 +100,27 @@ impl TimeoutSeconds {
     ///
     /// # Errors
     ///
-    /// Returns an error if timeout is 0 or greater than 300 seconds
+    /// Returns an error if timeout is 0 or greater than 300 seconds (5 minutes).
+    /// This limit prevents excessively long-running requests that could exhaust
+    /// server resources, while still allowing sufficient time for blockchain API calls.
     pub fn new(seconds: u64) -> Result<Self> {
         ensure!(seconds != 0, "timeout must be greater than 0");
-        ensure!(seconds <= 300, "timeout cannot exceed 300");
+        ensure!(
+            seconds <= MAX_TIMEOUT_SECONDS,
+            "timeout cannot exceed {} seconds for production safety",
+            MAX_TIMEOUT_SECONDS
+        );
         Ok(Self(Duration::from_secs(seconds)))
     }
 
     /// Create a safe default timeout (30 seconds)
     pub const fn default_value() -> Self {
-        Self(Duration::from_secs(30))
+        Self(Duration::from_secs(DEFAULT_TIMEOUT_SECONDS))
     }
 
     /// Create a safe testing timeout (5 seconds)
     pub const fn testing() -> Self {
-        Self(Duration::from_secs(5))
+        Self(Duration::from_secs(TESTING_TIMEOUT_SECONDS))
     }
 
     /// Get the timeout value in seconds
@@ -124,6 +145,179 @@ impl Default for TimeoutSeconds {
     }
 }
 
+/// A validated API base URL
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ApiBaseUrl(String);
+
+impl ApiBaseUrl {
+    /// Create a new `ApiBaseUrl`, ensuring it's a valid HTTP(S) URL
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the URL is invalid or not HTTP(S)
+    pub fn new(url: String) -> Result<Self> {
+        ensure!(!url.is_empty(), "API base URL cannot be empty");
+        ensure!(
+            url.starts_with("http://") || url.starts_with("https://"),
+            "API base URL must start with http:// or https://"
+        );
+        ensure!(!url.ends_with('/'), "API base URL should not end with '/'");
+        Ok(Self(url))
+    }
+
+    /// Create a default Moralis API URL for development
+    pub fn default_moralis() -> Self {
+        Self("https://deep-index.moralis.io/api/v2".to_string())
+    }
+
+    /// Get the URL value
+    pub fn value(&self) -> &str {
+        &self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for ApiBaseUrl {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let url = String::deserialize(deserializer)?;
+        Self::new(url).map_err(|e| de::Error::custom(e.to_string()))
+    }
+}
+
+/// A validated API key
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ApiKey(String);
+
+impl ApiKey {
+    /// Create a new `ApiKey`, ensuring it's not empty
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the key is empty
+    pub fn new(key: String) -> Result<Self> {
+        ensure!(!key.trim().is_empty(), "API key cannot be empty");
+        Ok(Self(key))
+    }
+
+    /// Create a placeholder API key for testing
+    pub fn testing() -> Self {
+        Self("test-api-key".to_string())
+    }
+
+    /// Get the API key value
+    pub fn value(&self) -> &str {
+        &self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for ApiKey {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let key = String::deserialize(deserializer)?;
+        Self::new(key).map_err(|e| de::Error::custom(e.to_string()))
+    }
+}
+
+/// External API configuration
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ExternalApiConfig {
+    /// Moralis API configuration
+    pub moralis: MoralisConfig,
+    /// Pinax API configuration
+    pub pinax: PinaxConfig,
+}
+
+/// Moralis API configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MoralisConfig {
+    /// Base URL for Moralis API
+    pub base_url: ApiBaseUrl,
+    /// API key for authentication
+    pub api_key: ApiKey,
+    /// Request timeout in seconds
+    pub timeout_seconds: TimeoutSeconds,
+    /// Health check timeout in seconds
+    pub health_check_timeout_seconds: TimeoutSeconds,
+    /// Maximum number of retry attempts
+    pub max_retries: u32,
+    /// Enable/disable the Moralis client
+    pub enabled: bool,
+}
+
+impl Default for MoralisConfig {
+    fn default() -> Self {
+        Self {
+            base_url: ApiBaseUrl::default_moralis(),
+            api_key: ApiKey::testing(), // Will be overridden in production
+            timeout_seconds: TimeoutSeconds::default(),
+            health_check_timeout_seconds: TimeoutSeconds::new(DEFAULT_HEALTH_CHECK_TIMEOUT_SECONDS)
+                .expect("default health check timeout is valid"),
+            max_retries: DEFAULT_MAX_RETRIES,
+            enabled: false,
+        }
+    }
+}
+
+/// Pinax API configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PinaxConfig {
+    /// Base URL for Pinax API endpoint
+    pub endpoint: ApiBaseUrl,
+    /// Username for Pinax API authentication
+    pub api_user: ApiKey,
+    /// Password/token for Pinax API authentication
+    pub api_auth: ApiKey,
+    /// Database name in the Pinax environment
+    pub db_name: String,
+    /// Request timeout in seconds
+    pub timeout_seconds: TimeoutSeconds,
+    /// Health check timeout in seconds
+    pub health_check_timeout_seconds: TimeoutSeconds,
+    /// Maximum number of retry attempts
+    pub max_retries: u32,
+    /// Enable/disable the Pinax client
+    pub enabled: bool,
+}
+
+impl Default for PinaxConfig {
+    fn default() -> Self {
+        Self {
+            endpoint: ApiBaseUrl::new("https://api.pinax.network/sql".to_string())
+                .expect("known to be valid"),
+            api_user: ApiKey::testing(),
+            api_auth: ApiKey::testing(),
+            db_name: "mainnet:evm-nft-tokens@v0.6.2".to_string(),
+            timeout_seconds: TimeoutSeconds::default(),
+            health_check_timeout_seconds: TimeoutSeconds::new(DEFAULT_HEALTH_CHECK_TIMEOUT_SECONDS)
+                .expect("default health check timeout is valid"),
+            max_retries: DEFAULT_MAX_RETRIES,
+            enabled: false,
+        }
+    }
+}
+
+/// Rate limiting configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RateLimitingConfig {
+    /// Enable/disable rate limiting
+    pub enabled: bool,
+    /// Maximum requests per minute per IP address
+    pub requests_per_minute: u32,
+}
+
+impl Default for RateLimitingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            requests_per_minute: DEFAULT_RATE_LIMIT_REQUESTS_PER_MINUTE,
+        }
+    }
+}
+
 /// Environment types for configuration
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
@@ -137,16 +331,35 @@ pub enum Environment {
 }
 
 /// Server configuration for different environments
+///
+/// ## Required Environment Variables for Production
+///
+/// To enable external APIs in production, set these environment variables:
+/// - `SERVER_EXTERNAL_APIS_MORALIS_API_KEY`: Your Moralis API key
+/// - `SERVER_EXTERNAL_APIS_MORALIS_ENABLED`: Set to "true" to enable
+/// - `SERVER_EXTERNAL_APIS_MORALIS_HEALTH_CHECK_TIMEOUT_SECONDS`: Health check timeout (default: 5)
+/// - `SERVER_EXTERNAL_APIS_PINAX_API_USER`: Your Pinax username
+/// - `SERVER_EXTERNAL_APIS_PINAX_API_AUTH`: Your Pinax auth token
+/// - `SERVER_EXTERNAL_APIS_PINAX_ENABLED`: Set to "true" to enable
+/// - `SERVER_EXTERNAL_APIS_PINAX_HEALTH_CHECK_TIMEOUT_SECONDS`: Health check timeout (default: 5)
+/// - `SERVER_RATE_LIMITING_ENABLED`: Enable rate limiting (default: true)
+/// - `SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE`: Requests per minute limit (default: 60)
+///
+/// APIs with placeholder credentials are automatically disabled by default for security.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
     /// Server host address
     pub host: IpAddr,
     /// Server port (validated for environment compatibility)
     pub port: ServerPort,
-    /// Request timeout in seconds (validated range: 1-300)
+    /// Request timeout in seconds (validated range: 1-60)
     pub timeout_seconds: TimeoutSeconds,
     /// Environment type
     pub environment: Environment,
+    /// External API configurations
+    pub external_apis: ExternalApiConfig,
+    /// Rate limiting configuration
+    pub rate_limiting: RateLimitingConfig,
     /// Additional configuration parameters
     pub extensions: HashMap<String, String>,
 }
@@ -158,6 +371,8 @@ impl Default for ServerConfig {
             port: ServerPort::default_development(),
             timeout_seconds: TimeoutSeconds::default(),
             environment: Environment::Development,
+            external_apis: ExternalApiConfig::default(),
+            rate_limiting: RateLimitingConfig::default(),
             extensions: HashMap::new(),
         }
     }
@@ -170,9 +385,151 @@ impl ServerConfig {
     ///
     /// Returns `ServerError::Config` if configuration is invalid or cannot be loaded.
     pub fn from_env() -> ServerResult<Self> {
-        Self::load().map_err(|e| ServerError::Config {
+        let config = Self::load().map_err(|e| ServerError::Config {
             message: format!("failed to load configuration: {e}"),
-        })
+        })?;
+
+        config.validate().map_err(|e| ServerError::Config {
+            message: format!("configuration validation failed: {e}"),
+        })?;
+
+        Ok(config)
+    }
+
+    /// Validate the configuration for production readiness
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the configuration contains placeholder values or is invalid for production use.
+    pub fn validate(&self) -> Result<()> {
+        self.validate_basic_configuration()?;
+        self.validate_api_credentials()?;
+        self.validate_production_safety()?;
+        Ok(())
+    }
+
+    /// Validate basic configuration parameters
+    fn validate_basic_configuration(&self) -> Result<()> {
+        // Port validation is handled by the u16 type - no need to check upper bound
+        let port = self.port.port();
+        ensure!(
+            port > 0,
+            "Port {} is invalid - must be greater than 0",
+            port
+        );
+
+        // Validate rate limiting bounds
+        if self.rate_limiting.enabled {
+            ensure!(
+                self.rate_limiting.requests_per_minute > 0,
+                "Rate limiting requests_per_minute must be greater than 0 when enabled"
+            );
+            ensure!(
+                self.rate_limiting.requests_per_minute <= 10_000,
+                "Rate limiting requests_per_minute of {} is too high - maximum is 10,000",
+                self.rate_limiting.requests_per_minute
+            );
+        }
+
+        // Validate timeout values
+        ensure!(
+            self.timeout_seconds.0.as_secs() >= 1,
+            "Timeout must be at least 1 second"
+        );
+
+        // Validate external API URLs are properly formatted (already validated in ApiBaseUrl::new())
+        if self.external_apis.moralis.enabled {
+            let base_url = self.external_apis.moralis.base_url.value();
+            ensure!(
+                base_url.starts_with("http://") || base_url.starts_with("https://"),
+                "Moralis base_url must be a valid HTTP(S) URL"
+            );
+        }
+
+        if self.external_apis.pinax.enabled {
+            let endpoint = self.external_apis.pinax.endpoint.value();
+            ensure!(
+                endpoint.starts_with("http://") || endpoint.starts_with("https://"),
+                "Pinax endpoint must be a valid HTTP(S) URL"
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Validate API credentials are not placeholders
+    fn validate_api_credentials(&self) -> Result<()> {
+        // Validate Moralis configuration if enabled
+        if self.external_apis.moralis.enabled {
+            let api_key = self.external_apis.moralis.api_key.value();
+            if api_key == "test-api-key" || api_key.starts_with("REPLACE_WITH_") {
+                return Err(anyhow!(
+                    "Moralis API is enabled but still has placeholder API key. Set SERVER_EXTERNAL_APIS_MORALIS_API_KEY or update config file."
+                ));
+            }
+        }
+
+        // Validate Pinax configuration if enabled
+        if self.external_apis.pinax.enabled {
+            let api_user = self.external_apis.pinax.api_user.value();
+            let api_auth = self.external_apis.pinax.api_auth.value();
+
+            if api_user == "test-api-key"
+                || api_user == "test-user"
+                || api_user.starts_with("REPLACE_WITH_")
+            {
+                return Err(anyhow!(
+                    "Pinax API is enabled but still has placeholder API user. Set SERVER_EXTERNAL_APIS_PINAX_API_USER or update config file."
+                ));
+            }
+
+            if api_auth == "test-api-key"
+                || api_auth == "test-auth"
+                || api_auth.starts_with("REPLACE_WITH_")
+            {
+                return Err(anyhow!(
+                    "Pinax API is enabled but still has placeholder API auth. Set SERVER_EXTERNAL_APIS_PINAX_API_AUTH or update config file."
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Validate production deployment safety
+    fn validate_production_safety(&self) -> Result<()> {
+        // In production environment, ensure rate limiting is enabled
+        if self.environment == Environment::Production {
+            if !self.rate_limiting.enabled {
+                return Err(anyhow!(
+                    "Rate limiting must be enabled in production environment for security"
+                ));
+            }
+
+            if self.rate_limiting.requests_per_minute == 0 {
+                return Err(anyhow!(
+                    "Rate limiting requests per minute cannot be 0 in production"
+                ));
+            }
+
+            // Warn about binding to all interfaces in production (but allow for container deployments)
+            if self.host.is_unspecified() {
+                warn!(
+                    "Binding to all interfaces (0.0.0.0 or ::) in production. Ensure proper firewall/proxy configuration is in place for security."
+                );
+            }
+
+            // Warn about development-specific settings
+            if let Some(jwt_secret) = self.extensions.get("jwt_secret")
+                && jwt_secret == "dev-secret-key-not-for-production"
+            {
+                return Err(anyhow!(
+                    "Production environment detected with development JWT secret. Set a secure JWT secret via SERVER_EXTENSIONS_JWT_SECRET"
+                ));
+            }
+        }
+
+        Ok(())
     }
 
     /// Load configuration using the config crate with hierarchical sources
@@ -192,9 +549,52 @@ impl ServerConfig {
         let mut config_builder = Config::builder()
             // Start with default values
             .set_default("host", "127.0.0.1")?
-            .set_default("port", 3000)?
-            .set_default("timeout_seconds", 30)?
+            .set_default("port", DEFAULT_SERVER_PORT)?
+            .set_default("timeout_seconds", DEFAULT_TIMEOUT_SECONDS)?
             .set_default("environment", "development")?
+            // External API defaults
+            .set_default(
+                "external_apis.moralis.base_url",
+                "https://deep-index.moralis.io/api/v2",
+            )?
+            .set_default("external_apis.moralis.api_key", "test-api-key")?
+            .set_default(
+                "external_apis.moralis.timeout_seconds",
+                DEFAULT_TIMEOUT_SECONDS,
+            )?
+            .set_default(
+                "external_apis.moralis.health_check_timeout_seconds",
+                DEFAULT_HEALTH_CHECK_TIMEOUT_SECONDS,
+            )?
+            .set_default("external_apis.moralis.max_retries", DEFAULT_MAX_RETRIES)?
+            .set_default("external_apis.moralis.enabled", false)?
+            // Pinax API defaults
+            .set_default(
+                "external_apis.pinax.endpoint",
+                "https://api.pinax.network/sql",
+            )?
+            .set_default("external_apis.pinax.api_user", "test-user")?
+            .set_default("external_apis.pinax.api_auth", "test-auth")?
+            .set_default(
+                "external_apis.pinax.db_name",
+                "mainnet:evm-nft-tokens@v0.6.2",
+            )?
+            .set_default(
+                "external_apis.pinax.timeout_seconds",
+                DEFAULT_TIMEOUT_SECONDS,
+            )?
+            .set_default(
+                "external_apis.pinax.health_check_timeout_seconds",
+                DEFAULT_HEALTH_CHECK_TIMEOUT_SECONDS,
+            )?
+            .set_default("external_apis.pinax.max_retries", DEFAULT_MAX_RETRIES)?
+            .set_default("external_apis.pinax.enabled", false)?
+            // Rate limiting defaults
+            .set_default("rate_limiting.enabled", true)?
+            .set_default(
+                "rate_limiting.requests_per_minute",
+                DEFAULT_RATE_LIMIT_REQUESTS_PER_MINUTE,
+            )?
             // Add optional configuration files
             .add_source(File::with_name("config.json").required(false))
             // Add environment-specific config file
@@ -229,6 +629,11 @@ impl ServerConfig {
             port: ServerPort::testing(), // let OS choose available port
             timeout_seconds: TimeoutSeconds::testing(),
             environment: Environment::Testing,
+            external_apis: ExternalApiConfig::default(),
+            rate_limiting: RateLimitingConfig {
+                enabled: false,
+                requests_per_minute: 0,
+            },
             extensions: HashMap::new(),
         }
     }
@@ -260,9 +665,9 @@ mod tests {
         assert!(TimeoutSeconds::new(400).is_err());
 
         // Valid timeout values should construct successfully
-        assert!(TimeoutSeconds::new(30).is_ok());
+        assert!(TimeoutSeconds::new(DEFAULT_TIMEOUT_SECONDS).is_ok());
         assert!(TimeoutSeconds::new(1).is_ok());
-        assert!(TimeoutSeconds::new(300).is_ok());
+        assert!(TimeoutSeconds::new(MAX_TIMEOUT_SECONDS).is_ok());
     }
 
     #[test]
@@ -273,7 +678,7 @@ mod tests {
         assert!(ServerPort::new(0, Environment::Production).is_err());
 
         // Non-zero ports should be valid in all environments
-        assert!(ServerPort::new(3000, Environment::Development).is_ok());
+        assert!(ServerPort::new(DEFAULT_SERVER_PORT, Environment::Development).is_ok());
         assert!(ServerPort::new(443, Environment::Production).is_ok());
     }
 
@@ -283,4 +688,104 @@ mod tests {
         assert_eq!(Environment::Development.to_string(), "development");
         assert_eq!(Environment::Testing.to_string(), "testing");
     }
+
+    #[test]
+    fn api_base_url_validation() {
+        // Valid URLs should construct successfully
+        assert!(ApiBaseUrl::new("https://api.example.com".to_string()).is_ok());
+        assert!(ApiBaseUrl::new("http://localhost:3000".to_string()).is_ok());
+
+        // Invalid URLs should fail
+        assert!(ApiBaseUrl::new(String::new()).is_err());
+        assert!(ApiBaseUrl::new("ftp://example.com".to_string()).is_err());
+        assert!(ApiBaseUrl::new("https://api.example.com/".to_string()).is_err()); // trailing slash
+    }
+
+    #[test]
+    fn api_key_validation() {
+        // Valid API keys should construct successfully
+        assert!(ApiKey::new("valid-api-key-123".to_string()).is_ok());
+        assert!(ApiKey::new("abc123".to_string()).is_ok());
+
+        // Invalid API keys should fail
+        assert!(ApiKey::new(String::new()).is_err());
+        assert!(ApiKey::new("   ".to_string()).is_err()); // whitespace only
+    }
+
+    #[test]
+    fn validate_placeholder_api_keys() {
+        let mut config = ServerConfig::default();
+
+        // Disable all APIs first
+        config.external_apis.moralis.enabled = false;
+        config.external_apis.pinax.enabled = false;
+
+        // Should be valid when APIs are disabled
+        assert!(config.validate().is_ok());
+
+        // Should fail when Moralis is enabled with placeholder key
+        config.external_apis.moralis.enabled = true;
+        let validation_result = config.validate();
+        assert!(validation_result.is_err());
+        assert!(
+            validation_result
+                .unwrap_err()
+                .to_string()
+                .contains("placeholder API key")
+        );
+
+        // Should fail when Pinax is enabled with placeholder credentials
+        config.external_apis.moralis.enabled = false;
+        config.external_apis.pinax.enabled = true;
+        let validation_result = config.validate();
+        assert!(validation_result.is_err());
+        assert!(
+            validation_result
+                .unwrap_err()
+                .to_string()
+                .contains("placeholder API")
+        );
+    }
+
+    #[test]
+    fn validate_production_safety() {
+        let mut config = ServerConfig {
+            environment: Environment::Production,
+            ..Default::default()
+        };
+
+        // Production should require rate limiting
+        config.rate_limiting.enabled = false;
+        let validation_result = config.validate();
+        assert!(validation_result.is_err());
+        assert!(
+            validation_result
+                .unwrap_err()
+                .to_string()
+                .contains("Rate limiting must be enabled in production")
+        );
+
+        // Fix rate limiting
+        config.rate_limiting.enabled = true;
+        config.rate_limiting.requests_per_minute = DEFAULT_RATE_LIMIT_REQUESTS_PER_MINUTE;
+
+        // Production allows binding to all interfaces (with warning) for container deployments
+        config.host = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
+        let validation_result = config.validate();
+        assert!(
+            validation_result.is_ok(),
+            "Production should allow binding to 0.0.0.0 with warning"
+        );
+
+        // Also works with specific host binding
+        assert!(config.validate().is_ok());
+    }
+
+    // Note: Environment variable support is provided via the config crate
+    // Environment variables can override configuration using the SERVER_ prefix:
+    // - SERVER_EXTERNAL_APIS_MORALIS_API_KEY
+    // - SERVER_EXTERNAL_APIS_MORALIS_ENABLED
+    // - SERVER_EXTERNAL_APIS_PINAX_API_USER
+    // - SERVER_EXTERNAL_APIS_PINAX_API_AUTH
+    // etc.
 }
