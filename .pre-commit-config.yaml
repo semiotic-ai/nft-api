@@ -1,8 +1,26 @@
-# SPDX-FileCopyrightText: 2025 Semiotic Labs
-#
-# SPDX-License-Identifier: Apache-2.0
-
 repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-toml
+      - id: check-yaml
+
+  - repo: https://github.com/doublify/pre-commit-rust
+    rev: v1.0
+    hooks:
+      # Format code with rustfmt
+      - id: fmt
+        args: ["+nightly", "--all", "--"]
+
+      # Check with clippy
+      - id: clippy
+        args: ["--workspace", "--all-targets", "--all-features", "--", "-D", "warnings"]
+
+      # Run cargo check
+      - id: cargo-check
+        args: ["--workspace", "--all-targets", "--all-features"]
   - repo: local
     hooks:
       - id: reuse-annotate
@@ -11,3 +29,11 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+
+      # Check licenses and dependencies
+      - id: cargo-deny
+        name: cargo-deny
+        entry: cargo deny check
+        language: system
+        types: [rust]
+        pass_filenames: false
