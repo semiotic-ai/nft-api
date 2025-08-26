@@ -17,6 +17,7 @@ path = [
     "docker-compose*.yml",
     ".pre-commit-config.yaml",
     "config.*.json",
+    "deny.toml",
     ".gitignore"
 ]
 precedence = "closest"
