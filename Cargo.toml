@@ -21,9 +21,11 @@ categories = ["web-programming", "cryptography"]
 [workspace.dependencies]
 alloy-primitives = { version = "1.3.0", features = ["serde"] }
 anyhow = "1.0.98"
+api-client = { path = "crates/api-client" }
 axum = "0.8.4"
 chrono = { version = "0.4.41", features = ["serde"] }
 config = "0.15.13"
+external-apis = { path = "crates/external-apis" }
 hyper = "1.6.0"
 mockall = "0.13.1"
 reqwest = { version = "0.12.9", features = ["json", "rustls-tls"], default-features = false }

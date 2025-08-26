@@ -35,9 +35,9 @@ anyhow.workspace = true
 tokio-util = { workspace = true }
 alloy-primitives = { workspace = true, features = ["serde"] }
 utoipa = { workspace = true, features = ["axum_extras"] }
-external-apis = { path = "../external-apis" }
-api-client = { path = "../api-client" }
+external-apis = { workspace = true }
+api-client = { workspace = true }
 
 [dev-dependencies]
-reqwest = { version = "0.12.23", features = ["json"] }
+reqwest = { workspace = true, features = ["json"] }
 tokio-test = { workspace = true }
