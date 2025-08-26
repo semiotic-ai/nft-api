@@ -12,9 +12,9 @@ authors.workspace = true
 description = "External API integrations for blockchain data providers"
 
 [dependencies]
-api-client = { workspace = true }
 alloy-primitives = { workspace = true }
 anyhow = { workspace = true }
+api-client = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
