@@ -3,3 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 target
+
+config.development.json
+config.production.json
+config.testing.json
