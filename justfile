@@ -126,7 +126,7 @@ docker-rebuild-dev:
 local-test-status:
     curl -X POST 0:3000/v1/contract/status \
     -H "Content-Type: application/json" \
-    --data '{"addresses": ["0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"], "chain_id": 1}'
+    --data '{"addresses": ["0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"], "chain_id": 137}'
 
 # Test local API health endpoint
 local-test-health:

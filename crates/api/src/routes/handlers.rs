@@ -19,6 +19,7 @@ use utoipa::ToSchema;
 
 use crate::{
     error::ServerError,
+    extractors::JsonExtractor,
     state::{HealthCheck, ServerState},
 };
 
@@ -114,7 +115,7 @@ pub struct ContractStatusResponse {
 )]
 pub async fn contract_status_handler(
     State(state): State<ServerState>,
-    Json(contract_status): Json<ContractStatusRequest>,
+    JsonExtractor(contract_status): JsonExtractor<ContractStatusRequest>,
 ) -> Result<Json<ContractStatusResponse>, ServerError> {
     contract_status
         .validate()

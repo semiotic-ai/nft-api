@@ -66,7 +66,7 @@ async fn contract_status_invalid_addresses() {
         .await
         .expect("Failed to send request");
 
-    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
@@ -123,7 +123,7 @@ async fn contract_status_invalid_chain_id() {
         .await
         .expect("Failed to send request");
 
-    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
@@ -281,5 +281,5 @@ async fn contract_status_missing_chain_id() {
         .await
         .expect("Failed to send request");
 
-    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
