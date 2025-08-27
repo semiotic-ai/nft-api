@@ -12,7 +12,7 @@ repos:
     hooks:
       # Format code with rustfmt
       - id: fmt
-        args: ["+nightly", "--all", "--"]
+        args: ["--all", "--"]
 
       # Check with clippy
       - id: clippy

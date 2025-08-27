@@ -225,12 +225,16 @@ impl Server {
             Self::shutdown_signal_handler(shutdown_token).await;
         });
 
-        let server_result = axum::serve(listener, self.router)
-            .with_graceful_shutdown(async move {
-                cancellation_token.cancelled().await;
-                info!("NFT API server shut down gracefully");
-            })
-            .await;
+        let server_result = axum::serve(
+            listener,
+            self.router
+                .into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .with_graceful_shutdown(async move {
+            cancellation_token.cancelled().await;
+            info!("NFT API server shut down gracefully");
+        })
+        .await;
 
         if let Err(e) = server_result {
             error!(error = ?e, "Server error during shutdown");
@@ -328,9 +332,13 @@ impl Server {
         let token = self.cancellation_token.child_token();
         let task = token.child_token();
         tokio::spawn(async move {
-            let _ = axum::serve(listener, self.router)
-                .with_graceful_shutdown(async move { task.cancelled().await })
-                .await;
+            let _ = axum::serve(
+                listener,
+                self.router
+                    .into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .with_graceful_shutdown(async move { task.cancelled().await })
+            .await;
         });
 
         Ok((actual_addr, token))

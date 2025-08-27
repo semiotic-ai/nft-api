@@ -11,6 +11,7 @@ use std::collections::HashMap;
 
 use alloy_primitives::Address;
 use api_client::{ApiClient, ContractMetadata, HealthStatus};
+use shared_types::ChainId;
 use tracing::{debug, info, warn};
 
 use crate::{MoralisClient, PinaxClient};
@@ -70,6 +71,7 @@ impl ApiRegistry {
     /// # Arguments
     ///
     /// * `address` - The contract address to get metadata for
+    /// * `chain_id` - The blockchain chain to query
     ///
     /// # Returns
     ///
@@ -79,6 +81,7 @@ impl ApiRegistry {
     pub async fn get_contract_metadata(
         &self,
         address: Address,
+        chain_id: ChainId,
     ) -> Result<Option<ContractMetadata>, RegistryError> {
         if self.moralis_client.is_none() && self.pinax_client.is_none() {
             return Err(RegistryError::NoClients);
@@ -86,16 +89,26 @@ impl ApiRegistry {
 
         let mut errors = Vec::new();
 
-        if let Some(result) = self.try_moralis_metadata(address, &mut errors).await {
+        if let Some(result) = self
+            .try_moralis_metadata(address, chain_id, &mut errors)
+            .await
+        {
             return Ok(result);
         }
 
-        if let Some(result) = self.try_pinax_metadata(address, &mut errors).await {
+        if let Some(result) = self
+            .try_pinax_metadata(address, chain_id, &mut errors)
+            .await
+        {
             return Ok(result);
         }
 
         if errors.is_empty() {
-            debug!("No metadata found for address {} in any client", address);
+            debug!(
+                "No metadata found for address {} on chain {} in any client",
+                address,
+                chain_id.name()
+            );
             Ok(None)
         } else {
             Err(RegistryError::AllClientsFailed {
@@ -108,13 +121,19 @@ impl ApiRegistry {
     async fn try_moralis_metadata(
         &self,
         address: Address,
+        chain_id: ChainId,
         errors: &mut Vec<String>,
     ) -> Option<Option<ContractMetadata>> {
         let moralis_client = self.moralis_client.as_ref()?;
 
         match self.is_moralis_healthy().await {
             Ok(true) => {
-                debug!("Trying healthy Moralis client");
+                debug!(
+                    "Trying healthy Moralis client for chain {} (Note: chain_id not yet supported by client)",
+                    chain_id.name()
+                );
+                // TODO: Update client interface to accept chain_id parameter
+                // Currently chain_id is used for logging/tracking but not passed to client
                 match moralis_client.get_contract_metadata(address).await {
                     Ok(Some(metadata)) => {
                         info!("Successfully retrieved metadata from Moralis client");
@@ -147,13 +166,19 @@ impl ApiRegistry {
     async fn try_pinax_metadata(
         &self,
         address: Address,
+        chain_id: ChainId,
         errors: &mut Vec<String>,
     ) -> Option<Option<ContractMetadata>> {
         let pinax_client = self.pinax_client.as_ref()?;
 
         match self.is_pinax_healthy().await {
             Ok(true) => {
-                debug!("Trying healthy Pinax client");
+                debug!(
+                    "Trying healthy Pinax client for chain {} (Note: chain_id not yet supported by client)",
+                    chain_id.name()
+                );
+                // TODO: Update client interface to accept chain_id parameter
+                // Currently chain_id is used for logging/tracking but not passed to client
                 match pinax_client.get_contract_metadata(address).await {
                     Ok(Some(metadata)) => {
                         info!("Successfully retrieved metadata from Pinax client");
@@ -302,7 +327,9 @@ mod tests {
     #[tokio::test]
     async fn get_contract_metadata_no_clients() {
         let registry = ApiRegistry::new();
-        let result = registry.get_contract_metadata(Address::ZERO).await;
+        let result = registry
+            .get_contract_metadata(Address::ZERO, ChainId::Polygon)
+            .await;
         assert!(matches!(result, Err(RegistryError::NoClients)));
     }
 

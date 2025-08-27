@@ -39,4 +39,5 @@ pub mod state;
 pub use config::{Environment, ServerConfig};
 pub use error::{ServerError, ServerResult};
 pub use server::{Server, ShutdownConfig};
+pub use shared_types::{ChainId, ChainImplementationStatus};
 pub use state::{HealthCheck, ServerState};
