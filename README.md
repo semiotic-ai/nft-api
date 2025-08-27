@@ -35,7 +35,8 @@ This project is organized as a Rust workspace with three main crates:
   "addresses": [
     "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
     "0x1234567890123456789012345678901234567890"
-  ]
+  ],
+  "chain": 1
 }
 ```
 
@@ -53,23 +54,125 @@ This project is organized as a Rust workspace with three main crates:
 }
 ```
 
+## Local Setup
+
+Follow these steps to get the NFT API running locally with Docker:
+
+### 1. Create Development Configuration
+
+First, create a development configuration file based on the example:
+
+```bash
+cp config.example.json config.development.json
+```
+
+Edit `config.development.json` and update the API credentials.
+
+
+### 2. Start Development Environment
+
+Build and start the development container:
+
+```bash
+just docker-dev-up
+```
+
+This will:
+- Build the development Docker image with full toolchain
+- Start the API server with hot reloading enabled
+- Mount your source code for live editing
+- Use your `config.development.json` configuration
+
+### 3. Verify Setup
+
+Test that the API is working correctly:
+
+```bash
+# Test the health endpoint
+just local-test-health
+
+# Test the contract status endpoint
+just local-test-status
+```
+
+Expected responses:
+- **Health**: JSON with server status and API client health
+- **Contract Status**: JSON with contract analysis results
+
+### 4. Development Workflow
+
+- **Edit code**: Changes are automatically reloaded in the container
+- **Update config**: Modify `config.development.json` for immediate effect
+- **View logs**: Container logs show debug-level information
+- **API docs**: Visit `http://localhost:3000/swagger-ui` for interactive documentation
+
+### 5. Stop Environment
+
+When finished developing:
+
+```bash
+just docker-dev-down
+```
+
 ## Quick Start
 
-1. **Build the project:**
+### Local Development
+
+1. **Setup development environment:**
+```bash
+just prepare-dev-setup
+```
+
+2. **Build the project:**
 ```bash
 cargo build --release
+# or
+just check
 ```
 
-2. **Run with default configuration:**
+3. **Run with default configuration:**
 ```bash
 cargo run
 ```
 
-3. **Run with custom configuration:**
+4. **Run with custom configuration:**
 ```bash
 export SERVER_PORT=8080
-export ENVIRONMENT=production
+export ENVIRONMENT=development
 cargo run
+```
+
+### Docker Development
+
+1. **Start development environment:**
+```bash
+just docker-dev-up
+# or in background
+just docker-dev-up-bg
+```
+
+2. **Stop development environment:**
+```bash
+just docker-dev-down
+```
+
+### Docker Production
+
+1. **Build production image:**
+```bash
+just docker-build
+```
+
+2. **Start production environment:**
+```bash
+just docker-prod-up
+# or in background
+just docker-prod-up-bg
+```
+
+3. **Stop production environment:**
+```bash
+just docker-prod-down
 ```
 
 ## Configuration
@@ -103,7 +206,7 @@ The NFT API uses a hierarchical configuration system powered by the [`config`](h
 
 ### Configuration Methods
 
-#### 1. Environment Variables 
+#### 1. Environment Variables
 
 Set environment variables with the `SERVER_` prefix:
 
@@ -210,23 +313,52 @@ Configuration values are loaded in hierarchical order. For example, if you have:
 The final port will be `9000` (environment variable takes highest precedence).
 
 
-### Development
+## Development
 
-**Running Tests:**
+### Available Commands
+
+The project uses [`just`](https://github.com/casey/just) for task management. Run `just` to see all available commands.
+
+**Testing:**
 ```bash
-cargo test --workspace --all-features
+just test           # Run tests with nextest (preferred)
+cargo test --workspace --all-features  # Alternative
 ```
 
-**Code Quality Checks:**
+**Code Quality:**
 ```bash
-cargo fmt --all
-cargo clippy --workspace --all-targets --all-features -- -D warnings
+just lint           # Run all checks (format, clippy, compilation)
+just fmt            # Format code with nightly rustfmt
+just clippy         # Run clippy linting alone
+just check          # Check compilation without building
+just organize       # Auto-organize Cargo.toml files
 ```
 
-**Security Scanning:**
+**Security & Dependencies:**
 ```bash
-cargo audit
-cargo deny check
+just deny           # Check licenses and dependencies
+cargo audit         # Security audit of dependencies
+```
+
+**Docker Development:**
+```bash
+just docker-build           # Build production image
+just docker-build-dev       # Build development image
+just docker-rebuild-prod    # Rebuild production image without cache
+just docker-rebuild-dev     # Rebuild development image without cache
+just docker-dev-up          # Start dev environment
+just docker-dev-up-bg       # Start dev environment in background
+just docker-dev-down        # Stop dev environment
+just docker-prod-up         # Start production environment
+just docker-prod-up-bg      # Start production in background
+just docker-prod-down       # Stop production environment
+just docker-clean           # Clean Docker images and containers
+```
+
+**Utilities:**
+```bash
+just clean          # Clean build artifacts
+just prepare-dev-setup  # Install tools and setup pre-commit hooks
 ```
 
 ## API Documentation

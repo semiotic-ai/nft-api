@@ -1,0 +1,71 @@
+# Build artifacts
+target/
+**/*.rs.bk
+
+# Rust-specific artifacts
+Cargo.lock.orig
+
+# IDE files
+.vscode/
+.idea/
+.claude/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# CI/CD
+.github/
+
+# Development files
+.pre-commit-config.yaml
+
+# Documentatio
+README.md
+LICENSES/
+LICENSE
+REUSE.toml
+
+# Docker files
+Dockerfile*
+.dockerignore
+docker-compose*.yml
+
+# Temporary files
+*.tmp
+*.temp
+*.backup
+*.bak
+*~
+
+# Logs and debugging
+*.log
+*.log.*
+logs/
+
+# Test artifacts
+coverage/
+test-results/
+*.profraw
+*.profdata
+default.profraw
+tarpaulin-report.html
+
+# Security-sensitive files
+.env*
+*.key
+*.pem
+*.crt
+secrets/
+*.secrets
+
+# Config files - keep needed configs for containers
+!config.example.json
+!config.development.json
+!config.production.json

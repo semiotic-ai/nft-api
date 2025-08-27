@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: 2025 Semiotic Labs
+#
+# SPDX-License-Identifier: Apache-2.0
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: development
+    ports:
+      - "3000:3000"  # API port
+    volumes:
+      # Source code mounts for hot reloading
+      - ./crates:/workspace/crates:cached
+      - ./Cargo.toml:/workspace/Cargo.toml:ro
+      - ./Cargo.lock:/workspace/Cargo.lock:ro
+      - ./clippy.toml:/workspace/clippy.toml:ro
+      - ./rustfmt.toml:/workspace/rustfmt.toml:ro
+      - ./deny.toml:/workspace/deny.toml:ro
+      - ./justfile:/workspace/justfile:ro
+      - ./config.development.json:/workspace/config.development.json
+      # Persistent caches for faster rebuilds
+      - cargo-cache:/usr/local/cargo/registry
+      - target-cache:/workspace/target
+    environment:
+      - RUST_LOG=debug
+      - ENVIRONMENT=development
+      - RUST_BACKTRACE=1
+      - CONFIG_FILE=/workspace/config.development.json
+      - CARGO_INCREMENTAL=1
+      - CARGO_TARGET_DIR=/workspace/target
+      # Development optimizations
+      - RUST_LIB_BACKTRACE=1
+      - TOKIO_CONSOLE=1
+      # Bind to all interfaces to allow external connections
+      - SERVER_HOST=0.0.0.0
+    stdin_open: true
+    tty: true
+    # Add health check for development
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  cargo-cache:
+    driver: local
+  target-cache:
+    driver: local

@@ -5,7 +5,7 @@
   "environment": "development",
   "external_apis": {
     "moralis": {
-      "base_url": "REPLACE_WITH_PINAX_ENDPOINT",
+      "base_url": "https://replace-with-moralis.endpoint",
       "api_key": "REPLACE_WITH_YOUR_MORALIS_API_KEY",
       "timeout_seconds": 30,
       "health_check_timeout_seconds": 5,
@@ -13,7 +13,7 @@
       "enabled": false
     },
     "pinax": {
-      "endpoint": "REPLACE_WITH_PINAX_ENDPOINT",
+      "endpoint": "https://replace-with-pinax.endpoint",
       "api_user": "REPLACE_WITH_YOUR_PINAX_USERNAME",
       "api_auth": "REPLACE_WITH_YOUR_PINAX_AUTH_TOKEN",
       "db_name": "REPLACE_WITH_DB_NAME",

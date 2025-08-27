@@ -1,0 +1,76 @@
+# SPDX-FileCopyrightText: 2025 Semiotic Labs
+#
+# SPDX-License-Identifier: Apache-2.0
+
+
+# Development target with full toolchain
+FROM rust:1.89 as development
+
+# Install system dependencies for development
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    curl \
+    git \
+    htop \
+    strace \
+    gdb \
+    valgrind \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Install Rust development tools
+RUN cargo install \
+    cargo-watch \
+    cargo-nextest \
+    cargo-deny \
+    cargo-audit \
+    cargo-autoinherit \
+    cargo-sort \
+    cargo-expand \
+    cargo-edit \
+    cargo-outdated \
+    cargo-bloat
+
+# Install just build runner
+RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+
+# Create development user with proper permissions
+RUN groupadd --gid 1000 dev && \
+    useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash dev
+
+# Ensure dev user owns Cargo registry for caching
+RUN chown -R dev:dev /usr/local/cargo
+
+# Switch to development user
+USER dev
+
+# Set up workspace directory
+WORKDIR /workspace
+
+# Copy workspace configuration files
+COPY --chown=dev:dev Cargo.toml Cargo.lock ./
+COPY --chown=dev:dev clippy.toml rustfmt.toml deny.toml justfile ./
+COPY --chown=dev:dev config.development.json ./
+
+# Create necessary directories
+RUN mkdir -p target .cargo
+
+# Pre-create cargo config for better caching
+RUN echo '[build]\ntarget-dir = "target"' > .cargo/config.toml
+
+# Development environment variables
+ENV RUST_LOG=debug
+ENV ENVIRONMENT=development
+ENV RUST_BACKTRACE=1
+ENV CARGO_INCREMENTAL=1
+ENV CONFIG_FILE=/workspace/config.development.json
+# Enable faster compilation in development
+ENV CARGO_TARGET_DIR=/workspace/target
+ENV CARGO_HOME=/usr/local/cargo
+
+# Expose API port and debug port
+EXPOSE 3000 9229
+
+# Default command with cargo-watch for hot reloading
+CMD ["cargo", "watch", "--why", "--clear", "--exec", "run --bin api"]

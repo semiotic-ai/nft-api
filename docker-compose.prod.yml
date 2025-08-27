@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2025 Semiotic Labs
+#
+# SPDX-License-Identifier: Apache-2.0
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    ports:
+      - "3000:3000"
+    environment:
+      - RUST_LOG=info
+      - ENVIRONMENT=production
+      - RUST_BACKTRACE=0
+      - CONFIG_FILE=/app/config.production.json
+      # Security settings
+      - RLIMIT_CORE=0
+      # Performance tuning (adjust based on your server)
+      - TOKIO_WORKER_THREADS=${TOKIO_WORKER_THREADS:-4}
+    # Production health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    # Resource limits for production
+    deploy:
+      resources:
+        limits:
+          cpus: '${CPU_LIMIT:-2.0}'
+          memory: ${MEMORY_LIMIT:-1G}
+        reservations:
+          cpus: '${CPU_RESERVATION:-0.5}'
+          memory: ${MEMORY_RESERVATION:-512M}
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 120s
+    # Security settings
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # Network isolation
+    networks:
+      - nft-api-network
+    # Configuration volume (mount your production config here)
+    volumes:
+      - ./config.production.json:/app/config.production.json:ro
+    # Restart policy
+    restart: unless-stopped
+
+networks:
+  nft-api-network:
+    driver: bridge
