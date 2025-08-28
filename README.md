@@ -101,7 +101,7 @@ just local-test-status "0x26D85A13212433Fe6A8381969c2B0dB390a0B0ae"
 just local-test-status "0xabc123...,0xdef456...,0x789abc..." "137"
 
 # Test with single address on Arbitrum (chain ID 42161)
-just local-test-status "0x1234567890123456789012345678901234567890" "42161"
+just local-test-status "0x071126cbec1c5562530ab85fd80dd3e3a42a70b8" "42161"
 ```
 
 Expected responses:
