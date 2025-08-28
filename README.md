@@ -95,7 +95,7 @@ just local-test-health
 just local-test-status
 
 # Test with custom contract address
-just local-test-status "0x1234567890123456789012345678901234567890"
+just local-test-status "0x26D85A13212433Fe6A8381969c2B0dB390a0B0ae"
 
 # Test with multiple addresses on Polygon (chain ID 137)
 just local-test-status "0xabc123...,0xdef456...,0x789abc..." "137"
