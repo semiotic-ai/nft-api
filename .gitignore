@@ -7,3 +7,6 @@ target
 config.development.json
 config.production.json
 config.testing.json
+
+.env
+.DS_Store
