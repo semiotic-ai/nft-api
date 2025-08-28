@@ -66,7 +66,7 @@ First, create a development configuration file based on the example:
 cp config.example.json config.development.json
 ```
 
-Edit `config.development.json` and update the API credentials.
+Edit `config.development.json` and update the API credentials. Ensure that you enable the external API needed for your use case, for example, `{external_apis.pinax.enabled: true}`.
 
 
 ### 2. Start Development Environment
