@@ -123,10 +123,17 @@ docker-rebuild-dev:
     echo "Development cache-free rebuild completed!"
 
 # Test local API contract status endpoint
-local-test-status:
+# Usage: just local-test-status [addresses] [chain_id]
+# addresses: comma-separated Ethereum addresses (default: test address)
+# chain_id: numeric chain ID (default: 1 for Ethereum mainnet)
+local-test-status addresses="0xabcdefabcdefabcdefabcdefabcdefabcdefabcd" chain_id="1":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Convert comma-separated addresses to JSON array format
+    addresses_json=$(echo "{{addresses}}" | sed 's/,/","/g' | sed 's/^/["/' | sed 's/$/"]/')
     curl -X POST 0:3000/v1/contract/status \
     -H "Content-Type: application/json" \
-    --data '{"addresses": ["0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"], "chain_id": 137}'
+    --data "{\"addresses\": $addresses_json, \"chain_id\": {{chain_id}}}"
 
 # Test local API health endpoint
 local-test-health:

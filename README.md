@@ -93,6 +93,15 @@ just local-test-health
 
 # Test the contract status endpoint
 just local-test-status
+
+# Test with custom contract address
+just local-test-status "0x1234567890123456789012345678901234567890"
+
+# Test with multiple addresses on Polygon (chain ID 137)
+just local-test-status "0xabc123...,0xdef456...,0x789abc..." "137"
+
+# Test with single address on Arbitrum (chain ID 42161)
+just local-test-status "0x1234567890123456789012345678901234567890" "42161"
 ```
 
 Expected responses:
@@ -353,6 +362,15 @@ just docker-prod-up         # Start production environment
 just docker-prod-up-bg      # Start production in background
 just docker-prod-down       # Stop production environment
 just docker-clean           # Clean Docker images and containers
+```
+
+**Local Testing:**
+```bash
+just local-test-health                                    # Test health endpoint
+just local-test-status                                    # Test contract status with defaults
+just local-test-status "0x123..."                       # Test with custom address
+just local-test-status "0x123...,0x456..." "137"        # Test multiple addresses on Polygon
+just local-test-status "0x123..." "42161"               # Test single address on Arbitrum
 ```
 
 **Utilities:**
