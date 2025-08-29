@@ -22,20 +22,22 @@ COPY Cargo.toml Cargo.lock ./
 COPY clippy.toml rustfmt.toml deny.toml ./
 
 # Create placeholder source files to enable dependency pre-building
-RUN mkdir -p crates/api/src crates/api-client/src crates/external-apis/src crates/shared-types/src
+RUN mkdir -p crates/api/src crates/api-client/src crates/external-apis/src crates/shared-types/src crates/spam-predictor/src
 
 # Copy all Cargo.toml files for each crate
 COPY crates/api/Cargo.toml crates/api/
 COPY crates/api-client/Cargo.toml crates/api-client/
 COPY crates/external-apis/Cargo.toml crates/external-apis/
 COPY crates/shared-types/Cargo.toml crates/shared-types/
+COPY crates/spam-predictor/Cargo.toml crates/spam-predictor/
 
 # Create placeholder main.rs files to satisfy cargo build
 RUN echo 'fn main() {}' > crates/api/src/main.rs && \
     echo 'fn main() {}' > crates/api/src/lib.rs && \
     echo '' > crates/api-client/src/lib.rs && \
     echo '' > crates/external-apis/src/lib.rs && \
-    echo '' > crates/shared-types/src/lib.rs
+    echo '' > crates/shared-types/src/lib.rs && \
+    echo '' > crates/spam-predictor/src/lib.rs
 
 # Build dependencies only (this layer will be cached)
 RUN cargo build --release --bin api
