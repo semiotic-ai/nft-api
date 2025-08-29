@@ -20,7 +20,7 @@
       "timeout_seconds": 30,
       "health_check_timeout_seconds": 5,
       "max_retries": 3,
-      "enabled": false
+      "enabled": true
     }
   },
   "spam_predictor": {
