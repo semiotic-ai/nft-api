@@ -75,6 +75,9 @@ COPY --from=builder --chown=appuser:appuser /app/target/release/api /app/api
 # Copy production config
 COPY --chown=appuser:appuser config.production.json /app/config.production.json
 
+# Copy assets directory
+COPY --chown=appuser:appuser assets/ /app/assets/
+
 # Ensure binary is executable
 RUN chmod +x /app/api
 

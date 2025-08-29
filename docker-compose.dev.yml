@@ -20,6 +20,7 @@ services:
       - ./deny.toml:/workspace/deny.toml:ro
       - ./justfile:/workspace/justfile:ro
       - ./config.development.json:/workspace/config.development.json
+      - ./assets:/workspace/assets:cached
       # Persistent caches for faster rebuilds
       - cargo-cache:/usr/local/cargo/registry
       - target-cache:/workspace/target
