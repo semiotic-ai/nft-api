@@ -27,6 +27,7 @@ hyper = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 shared-types.workspace = true
+spam-predictor = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "signal"] }
 tokio-util = { workspace = true }
@@ -34,6 +35,7 @@ tower = { workspace = true }
 tower-http = { workspace = true, features = ["cors", "timeout", "trace", "request-id"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
+url = { workspace = true }
 utoipa = { workspace = true, features = ["axum_extras"] }
 
 [dev-dependencies]

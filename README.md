@@ -209,6 +209,16 @@ The NFT API uses a hierarchical configuration system powered by the [`config`](h
 | `external_apis.pinax.api_user` | String | - | Pinax API username |
 | `external_apis.pinax.api_auth` | String | - | Pinax API authentication token |
 | `external_apis.pinax.endpoint` | String | `https://api.pinax.network/sql` | Pinax API endpoint |
+| `spam_predictor.openai_api_key` | String | - | OpenAI API key for GPT model access (required) |
+| `spam_predictor.openai_base_url` | String | `https://api.openai.com/v1` | OpenAI API base URL (optional) |
+| `spam_predictor.openai_organization_id` | String | - | OpenAI organization ID (optional) |
+| `spam_predictor.timeout_seconds` | Integer | `30` | OpenAI API request timeout |
+| `spam_predictor.max_tokens` | Integer | `10` | Maximum tokens for AI responses |
+| `spam_predictor.temperature` | Float | `0.0` | AI model temperature (0.0-2.0) |
+| `spam_predictor.model_registry_path` | String | `assets/configs/models.yaml` | Path to model configuration file |
+| `spam_predictor.prompt_registry_path` | String | `assets/prompts/ft_prompt.json` | Path to prompt configuration file |
+| `spam_predictor.cache_ttl_seconds` | Integer | `3600` | Cache TTL for predictions in seconds |
+| `spam_predictor.max_cache_size` | Integer | `10000` | Maximum number of cached predictions |
 | `rate_limiting.enabled` | Boolean | `true` | Enable rate limiting |
 | `rate_limiting.requests_per_minute` | Integer | `60` | Maximum requests per IP per minute |
 | `extensions` | Object | `{}` | Additional configuration parameters |
@@ -232,6 +242,15 @@ export SERVER_EXTERNAL_APIS_MORALIS_API_KEY=your_moralis_api_key
 export SERVER_EXTERNAL_APIS_PINAX_ENABLED=true
 export SERVER_EXTERNAL_APIS_PINAX_API_USER=your_pinax_username
 export SERVER_EXTERNAL_APIS_PINAX_API_AUTH=your_pinax_auth_token
+
+# AI Spam Predictor configuration
+export SERVER_EXTERNAL_APIS_SPAM_PREDICTOR_ENABLED=true
+export SERVER_EXTERNAL_APIS_SPAM_PREDICTOR_OPENAI_API_KEY=sk-your-openai-api-key-here
+export SERVER_EXTERNAL_APIS_SPAM_PREDICTOR_OPENAI_BASE_URL=https://api.openai.com/v1
+export SERVER_EXTERNAL_APIS_SPAM_PREDICTOR_OPENAI_ORGANIZATION_ID=your-org-id
+export SERVER_EXTERNAL_APIS_SPAM_PREDICTOR_TIMEOUT_SECONDS=30
+export SERVER_EXTERNAL_APIS_SPAM_PREDICTOR_MAX_TOKENS=10
+export SERVER_EXTERNAL_APIS_SPAM_PREDICTOR_TEMPERATURE=0.0
 
 # Rate limiting
 export SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE=100
@@ -266,6 +285,17 @@ Create configuration files in the project root:
       "timeout_seconds": 30,
       "health_check_timeout_seconds": 5,
       "max_retries": 3
+    },
+    "spam_predictor": {
+      "enabled": true,
+      "openai_api_key": "sk-your-openai-api-key-here",
+      "openai_base_url": "https://api.openai.com/v1",
+      "openai_organization_id": "your-org-id",
+      "timeout_seconds": 30,
+      "max_tokens": 10,
+      "temperature": 0.0,
+      "model_registry_path": "assets/configs/models.yaml",
+      "prompt_registry_path": "assets/prompts/ft_prompt.json"
     }
   },
   "rate_limiting": {
@@ -321,6 +351,74 @@ Configuration values are loaded in hierarchical order. For example, if you have:
 
 The final port will be `9000` (environment variable takes highest precedence).
 
+## AI Spam Predictor Setup
+
+The NFT API includes an AI-powered spam prediction system using OpenAI's fine-tuned GPT models. This feature analyzes contract metadata to classify contracts as spam or legitimate.
+
+### Prerequisites
+
+1. **OpenAI API Key**: You need a valid OpenAI API key with access to fine-tuned models
+2. **Model Configuration**: Proper model registry and prompt configuration files
+3. **Asset Files**: Required configuration files in the `assets/` directory
+
+### Quick Setup
+
+1. **Get OpenAI API Key**:
+   - Visit [OpenAI Platform](https://platform.openai.com/api-keys)
+   - Create a new API key with the format `sk-...`
+   - Store securely (never commit to version control)
+
+2. **Enable Spam Predictor**:
+   ```bash
+   export SERVER_EXTERNAL_APIS_SPAM_PREDICTOR_ENABLED=true
+   export SERVER_EXTERNAL_APIS_SPAM_PREDICTOR_OPENAI_API_KEY=sk-your-actual-openai-key
+   ```
+
+3. **Create Asset Files** (if not present):
+   ```bash
+   mkdir -p assets/configs assets/prompts
+   # Add your model registry (models.yaml) and prompt configuration (ft_prompt.json)
+   ```
+
+### Configuration Options
+
+#### Required Settings
+- `openai_api_key`: Your OpenAI API key (starts with `sk-`)
+- `enabled`: Set to `true` to activate spam prediction
+
+#### Optional Settings
+- `openai_base_url`: Custom OpenAI API endpoint (default: `https://api.openai.com/v1`)
+- `openai_organization_id`: OpenAI organization ID for billing/usage tracking
+- `timeout_seconds`: Request timeout in seconds (default: `30`)
+- `max_tokens`: Maximum AI response tokens (default: `10`)
+- `temperature`: AI model creativity level, 0.0-2.0 (default: `0.0` for consistent results)
+- `model_registry_path`: Path to model configuration file (default: `assets/configs/models.yaml`)
+- `prompt_registry_path`: Path to prompt configuration file (default: `assets/prompts/ft_prompt.json`)
+
+### Security Considerations
+
+- **Never commit API keys**: Use environment variables or secure secret stores
+- **Validate keys**: Ensure API key format starts with `sk-` and is properly scoped
+- **Monitor usage**: Track OpenAI API calls and costs in production
+- **Rate limiting**: Built-in request throttling prevents API abuse
+
+### Troubleshooting
+
+**SpamPredictor disabled**: If spam prediction is not working, check:
+1. API key is valid and properly formatted
+2. Asset files exist at configured paths
+3. OpenAI API has sufficient quota/credits
+4. Network connectivity to OpenAI API
+
+**Health check failures**: The `/health` endpoint includes spam predictor status:
+```json
+{
+  "status": "Up",
+  "api_clients": {
+    "spam_predictor": "Up"  // or "Down" if issues exist
+  }
+}
+```
 
 ## Development
 
@@ -401,9 +499,10 @@ The complete OpenAPI 3.0 specification is available in JSON format:
 
 ### Security Considerations
 
-- **API Credentials**: Set real Moralis and Pinax API keys, remove placeholder values
+- **API Credentials**: Set real Moralis, Pinax, and OpenAI API keys, remove placeholder values
+- **AI Security**: Monitor OpenAI API usage and costs, validate API key scoping, never commit AI credentials
 - **Rate Limiting**: Always enabled in production (validates to prevent DoS attacks)
-- **HTTPS**: Enforce HTTPS URLs for external API endpoints
+- **HTTPS**: Enforce HTTPS URLs for external API endpoints (including OpenAI API)
 - **Host Binding**: Consider firewall/proxy configuration when binding to `0.0.0.0`
 - **Secrets Management**: Use environment variables or secure secret stores, never commit API keys
 

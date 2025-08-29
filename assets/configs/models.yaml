@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2025 Semiotic Labs
+#
+# SPDX-License-Identifier: Apache-2.0
+
+model_registry:
+  spam_classification:
+    latest: ft:gpt-4o-2024-08-06:semiotic-labs::BSX6JN1I
+    v0: ft:gpt-4o-2024-08-06:semiotic-labs::BSX6JN1I

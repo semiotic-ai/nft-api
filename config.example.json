@@ -23,6 +23,18 @@
       "enabled": false
     }
   },
+  "spam_predictor": {
+    "openai_api_key": "REPLACE_WITH_YOUR_OPENAI_API_KEY",
+    "openai_base_url": "https://api.openai.com/v1",
+    "openai_organization_id": "REPLACE_WITH_YOUR_OPENAI_ORG_ID",
+    "timeout_seconds": 30,
+    "max_tokens": 10,
+    "temperature": 0.0,
+    "model_registry_path": "assets/configs/models.yaml",
+    "prompt_registry_path": "assets/prompts/ft_prompt.json",
+    "cache_ttl_seconds": 3600,
+    "max_cache_size": 10000
+  },
   "rate_limiting": {
     "enabled": true,
     "requests_per_minute": 60

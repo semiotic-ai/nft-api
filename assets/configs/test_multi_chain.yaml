@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2025 Semiotic Labs
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Multi-Chain NFT Spam Detection Configuration
+
+# API Configuration
+pinax_api_user: "PINAX_API_USER"
+pinax_api_auth: "PINAX_API_AUTH"
+pinax_endpoint: "PINAX_ENDPOINT"
+openai_api_key: "OPENAI_API_KEY"
+mlflow_tracking_uri: "MLFLOW_TRACKING_URI"
+mlflow_experiment: "MLFLOW_EXPERIMENT"
+
+# Model and Prompt Configuration
+prompt_file: "token-api-server/src/token_api_server/assets/prompts/ft_prompt.json"
+model_registry_file: "token-api-server/src/token_api_server/assets/configs/models.yaml"
+
+# Columns configuration
+columns: ["symbol", "name", "description"]
+
+# Chain Configurations
+chains:
+  arbitrum:
+    db_name: "arbitrum-one:evm-nft-tokens@v0.5.1"
+
+  avalanche:
+    db_name: "avalanche:evm-nft-tokens@v0.5.1"
+
+  base:
+    db_name: "base:evm-nft-tokens@v0.5.1"
+
+  bsc:
+    db_name: "bsc:evm-nft-tokens@v0.5.1"
+
+  mainnet:
+    db_name: "mainnet:evm-nft-tokens@v0.6.2"
+
+  matic:
+    db_name: "matic:evm-nft-tokens@v0.5.1"
+
+  optimism:
+    db_name: "optimism:evm-nft-tokens@v0.5.1"
+
+  unichain:
+    db_name: "unichain:evm-nft-tokens@v0.5.1"

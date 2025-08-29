@@ -1,0 +1,82 @@
+[
+  {
+    "address": "0x00000000001594c61dd8a6804da9ab58ed2483ce",
+    "name": "NFTs2Me Owners",
+    "chain": "arbitrum"
+  },
+  {
+    "address": "0x00000000016c35e3613ad3ed484aa48f161b67fd",
+    "name": "Smithonia Weapons",
+    "chain": "arbitrum"
+  },
+  {
+    "address": "0x0000000000771a79d0fc7f3b7fe270eb4498f20b",
+    "name": "MCT-XENFT",
+    "chain": "avalanche"
+  },
+  {
+    "address": "0x000b9a715122a2c91513f38f9322ef47dc97294a",
+    "name": "Jerry's Ink/Paper Images",
+    "chain": "avalanche"
+  },
+  {
+    "address": "0x397823d28b62aa879f517675da859de2a0ec2abe",
+    "name": "Echo: Agent Zero of SymbiOS",
+    "chain": "base"
+  },
+  {
+    "address": "0x3992f0829292a4da4daacf40a8ead8733ac77cea",
+    "name": "F.C.T.R",
+    "chain": "base"
+  },
+  {
+    "address": "0x0001196f33963b1e3a93836887a8080df3888888",
+    "name": "Genius Collectibles First Edition v2",
+    "chain": "bsc"
+  },
+  {
+    "address": "0xbf2bcc25c5d294b3b076cfbf2c7f5e68ddd23ac2",
+    "name": "Popeye World NFT",
+    "chain": "bsc"
+  },
+  {
+    "address": "0x2e3a0bbc85119aa0dde4825cec8d474f5b09b721",
+    "name": "Daisuke Arts",
+    "chain": "mainnet"
+  },
+  {
+    "address": "0x2e3a148e113e381e2b601a0c9914576ffe8d85d4",
+    "name": "Turtle Islands",
+    "chain": "mainnet"
+  },
+  {
+    "address": "0xaffee4b319ba0f479085e5ea76c89c51aa4e67aa",
+    "name": "Raffle by Polytrade",
+    "chain": "matic"
+  },
+  {
+    "address": "0xafffaa7ee82c8d6066d7d7ab36c1ee6a1219571a",
+    "name": "34694-Follower",
+    "chain": "matic"
+  },
+  {
+    "address": "0x05e35c3d2af018212fd01ad0d8f74e7d3f0a4e1e",
+    "name": "Abstract corner",
+    "chain": "optimism"
+  },
+  {
+    "address": "0x05df4cd84e98911f82546e9bc6ba2742493e1df5",
+    "name": "1",
+    "chain": "optimism"
+  },
+  {
+    "address": "0xe8abd02d7bf3ffda3b620f1cbdb0a1b5d2522201",
+    "name": "telescope",
+    "chain": "unichain"
+  },
+  {
+    "address": "0x626d7b1ef26baa7b149ce6e0147a182022edd242",
+    "name": "tinyass unicorns",
+    "chain": "unichain"
+  }
+]

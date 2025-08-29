@@ -16,6 +16,7 @@ use external_apis::{
     PinaxConfig as ExternalPinaxConfig,
 };
 use hyper::Request;
+use spam_predictor::{SpamPredictor, SpamPredictorConfig};
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tower::ServiceBuilder;
@@ -80,9 +81,9 @@ impl Server {
     /// # Errors
     ///
     /// Returns `ServerError::Config` if the configuration is invalid.
-    pub fn new(config: ServerConfig, shutdown_config: ShutdownConfig) -> ServerResult<Self> {
+    pub async fn new(config: ServerConfig, shutdown_config: ShutdownConfig) -> ServerResult<Self> {
         let api_registry = Self::create_api_registry_from_config(&config);
-        Self::with_api_registry(config, shutdown_config, Arc::new(api_registry))
+        Self::with_api_registry(config, shutdown_config, Arc::new(api_registry)).await
     }
 
     /// Create API registry from server configuration
@@ -136,22 +137,82 @@ impl Server {
         ApiRegistry::with_clients(moralis_client, pinax_client)
     }
 
+    /// Create spam predictor from server configuration
+    async fn create_spam_predictor_from_config(
+        config: &ServerConfig,
+    ) -> ServerResult<SpamPredictor> {
+        info!("initializing spam predictor");
+
+        // Create OpenAI configuration
+        let openai_config = spam_predictor::config::OpenAiConfig::new(
+            config.spam_predictor.openai_api_key.value().to_string(),
+        )
+        .with_timeout(config.spam_predictor.timeout_seconds.value().as_secs())
+        .with_max_tokens(config.spam_predictor.max_tokens.unwrap_or(10))
+        .with_temperature(config.spam_predictor.temperature.unwrap_or(0.0));
+
+        // Set base URL if configured
+        let openai_config = if let Some(base_url) = &config.spam_predictor.openai_base_url {
+            // Convert ApiBaseUrl to url::Url
+            let url = url::Url::parse(base_url.value()).map_err(|e| ServerError::Config {
+                message: format!("Invalid OpenAI base URL: {e}"),
+            })?;
+            openai_config.with_base_url(url)
+        } else {
+            openai_config
+        };
+
+        // Set organization ID if configured
+        let openai_config = if let Some(org_id) = &config.spam_predictor.openai_organization_id {
+            openai_config.with_organization(org_id.clone())
+        } else {
+            openai_config
+        };
+
+        // Create SpamPredictorConfig
+        let predictor_config = SpamPredictorConfig::from_files(
+            &config.spam_predictor.model_registry_path,
+            &config.spam_predictor.prompt_registry_path,
+            openai_config,
+        )
+        .await
+        .map_err(|e| ServerError::Config {
+            message: format!("Failed to create spam predictor configuration: {e}"),
+        })?;
+
+        // Create SpamPredictor
+        let predictor =
+            SpamPredictor::new(predictor_config)
+                .await
+                .map_err(|e| ServerError::Config {
+                    message: format!("Failed to initialize spam predictor: {e}"),
+                })?;
+
+        info!("spam predictor initialized successfully");
+        Ok(predictor)
+    }
+
     /// Create server with custom API registry for dependency injection
     ///
     /// # Errors
     ///
     /// Returns `ServerError::Config` if the configuration is invalid.
-    pub fn with_api_registry(
+    pub async fn with_api_registry(
         config: ServerConfig,
         graceful_shutdown_config: ShutdownConfig,
         api_registry: Arc<ApiRegistry>,
     ) -> ServerResult<Self> {
         // Configuration validation is now built into the types
 
+        // Initialize spam predictor (always required)
+        let spam_predictor = Self::create_spam_predictor_from_config(&config).await?;
+        let spam_predictor = Arc::new(spam_predictor);
+
         let cancellation_token = CancellationToken::new();
         let state = ServerState::new(
             config.clone(),
             api_registry,
+            spam_predictor,
             cancellation_token.child_token(),
         );
         let router = Self::create_router(state.clone());
@@ -363,7 +424,7 @@ mod tests {
     #[tokio::test]
     async fn server_creation() -> ServerResult<()> {
         let config = ServerConfig::for_testing();
-        let server = Server::new(config, ShutdownConfig::default())?;
+        let server = Server::new(config, ShutdownConfig::default()).await?;
         assert_eq!(server.config().environment, Environment::Testing);
         assert!(!server.cancellation_token().is_cancelled());
         Ok(())
@@ -372,7 +433,7 @@ mod tests {
     #[tokio::test]
     async fn programmatic_shutdown() -> ServerResult<()> {
         let config = ServerConfig::for_testing();
-        let server = Server::new(config, ShutdownConfig::default())?;
+        let server = Server::new(config, ShutdownConfig::default()).await?;
 
         assert!(!server.cancellation_token().is_cancelled());
 

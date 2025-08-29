@@ -13,6 +13,7 @@ async fn contract_status_valid_addresses() {
     let config = ServerConfig::for_testing();
     let shutdown_config = ShutdownConfig::default();
     let (addr, _) = Server::new(config, shutdown_config)
+        .await
         .expect("Failed to create server")
         .run_for_testing()
         .await
@@ -43,6 +44,7 @@ async fn contract_status_invalid_addresses() {
     let config = ServerConfig::for_testing();
     let shutdown_config = ShutdownConfig::default();
     let (addr, _) = Server::new(config, shutdown_config)
+        .await
         .expect("Failed to create server")
         .run_for_testing()
         .await
@@ -74,6 +76,7 @@ async fn contract_status_empty_addresses() {
     let config = ServerConfig::for_testing();
     let shutdown_config = ShutdownConfig::default();
     let (addr, _) = Server::new(config, shutdown_config)
+        .await
         .expect("Failed to create server")
         .run_for_testing()
         .await
@@ -104,6 +107,7 @@ async fn contract_status_invalid_chain_id() {
     let config = ServerConfig::for_testing();
     let shutdown_config = ShutdownConfig::default();
     let (addr, _) = Server::new(config, shutdown_config)
+        .await
         .expect("Failed to create server")
         .run_for_testing()
         .await
@@ -131,6 +135,7 @@ async fn contract_status_chain_id_string() {
     let config = ServerConfig::for_testing();
     let shutdown_config = ShutdownConfig::default();
     let (addr, _) = Server::new(config, shutdown_config)
+        .await
         .expect("Failed to create server")
         .run_for_testing()
         .await
@@ -158,6 +163,7 @@ async fn contract_status_full_implementation_chain() {
     let config = ServerConfig::for_testing();
     let shutdown_config = ShutdownConfig::default();
     let (addr, _) = Server::new(config, shutdown_config)
+        .await
         .expect("Failed to create server")
         .run_for_testing()
         .await
@@ -189,6 +195,7 @@ async fn contract_status_partial_implementation_chain() {
     let config = ServerConfig::for_testing();
     let shutdown_config = ShutdownConfig::default();
     let (addr, _) = Server::new(config, shutdown_config)
+        .await
         .expect("Failed to create server")
         .run_for_testing()
         .await
@@ -226,6 +233,7 @@ async fn contract_status_planned_implementation_chain() {
     let config = ServerConfig::for_testing();
     let shutdown_config = ShutdownConfig::default();
     let (addr, _) = Server::new(config, shutdown_config)
+        .await
         .expect("Failed to create server")
         .run_for_testing()
         .await
@@ -263,6 +271,7 @@ async fn contract_status_missing_chain_id() {
     let config = ServerConfig::for_testing();
     let shutdown_config = ShutdownConfig::default();
     let (addr, _) = Server::new(config, shutdown_config)
+        .await
         .expect("Failed to create server")
         .run_for_testing()
         .await

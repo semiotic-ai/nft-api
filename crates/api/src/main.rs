@@ -26,7 +26,7 @@ async fn main() -> Result<()> {
 
     let shutdown_config = ShutdownConfig::default();
 
-    let server = Server::new(config, shutdown_config)?;
+    let server = Server::new(config, shutdown_config).await?;
 
     // NOTE: the `#[tokio::main]` task does not run a worker future, we must spawn
     tokio::spawn(async move { server.run().await }).await??;

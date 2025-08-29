@@ -14,7 +14,7 @@ use alloy_primitives::Address;
 use axum::{Json, extract::State, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 use shared_types::{ChainId, ChainImplementationStatus};
-use tracing::error;
+use tracing::{debug, error, info, instrument, warn};
 use utoipa::ToSchema;
 
 use crate::{
@@ -22,6 +22,15 @@ use crate::{
     extractors::JsonExtractor,
     state::{HealthCheck, ServerState},
 };
+
+/// Result of spam analysis operation
+#[derive(Debug, Clone)]
+struct SpamAnalysisResult {
+    /// Whether the contract is classified as spam
+    is_spam: bool,
+    /// Human-readable analysis message
+    message: &'static str,
+}
 
 /// Health check endpoint handler
 #[utoipa::path(
@@ -113,10 +122,22 @@ pub struct ContractStatusResponse {
         (status = 500, description = "Internal server error during analysis", body = String)
     )
 )]
+#[allow(clippy::too_many_lines)] // Complex handler with multiple analysis steps
+#[instrument(skip(state, contract_status), fields(
+    chain_id = %contract_status.chain_id,
+    addresses_count = contract_status.addresses.len(),
+    chain_implementation = %contract_status.chain_id.implementation_status()
+))]
 pub async fn contract_status_handler(
     State(state): State<ServerState>,
     JsonExtractor(contract_status): JsonExtractor<ContractStatusRequest>,
 ) -> Result<Json<ContractStatusResponse>, ServerError> {
+    let start_time = std::time::Instant::now();
+    info!(
+        chain_id = %contract_status.chain_id,
+        addresses_count = contract_status.addresses.len(),
+        "starting contract status analysis"
+    );
     contract_status
         .validate()
         .map_err(|msg| ServerError::ValidationError(msg.to_string()))?;
@@ -126,19 +147,34 @@ pub async fn contract_status_handler(
     let api_registry = state.api_registry();
     let mut results = HashMap::new();
 
-    for address in contract_status.addresses {
+    for (index, address) in contract_status.addresses.iter().enumerate() {
+        debug!(
+            address = %address,
+            index = index,
+            chain_id = %chain_id,
+            "processing contract address"
+        );
+
         let result = match implementation_status {
             ChainImplementationStatus::Full => {
                 // Full implementation - perform normal analysis
-                match api_registry.get_contract_metadata(address, chain_id).await {
-                    Ok(Some(_metadata)) => ContractStatusResult {
-                        chain_id,
-                        contract_spam_status: false,
-                        message: format!(
-                            "contract metadata found on {}, analysis indicates not spam",
-                            chain_id.name()
-                        ),
-                    },
+                match api_registry.get_contract_metadata(*address, chain_id).await {
+                    Ok(Some(metadata)) => {
+                        // Perform spam prediction if spam predictor is available
+                        let analysis_result =
+                            perform_spam_analysis(&metadata, state.spam_predictor(), *address)
+                                .await;
+
+                        ContractStatusResult {
+                            chain_id,
+                            contract_spam_status: analysis_result.is_spam,
+                            message: format!(
+                                "contract metadata found on {}, {}",
+                                chain_id.name(),
+                                analysis_result.message
+                            ),
+                        }
+                    }
                     Ok(None) => ContractStatusResult {
                         chain_id,
                         contract_spam_status: false,
@@ -147,7 +183,7 @@ pub async fn contract_status_handler(
                     Err(e) => {
                         error!(
                             "failed to fetch contract metadata for {} on {}: {}",
-                            address,
+                            *address,
                             chain_id.name(),
                             e
                         );
@@ -164,16 +200,24 @@ pub async fn contract_status_handler(
             }
             ChainImplementationStatus::Partial => {
                 // Partial implementation - limited analysis with warning
-                match api_registry.get_contract_metadata(address, chain_id).await {
-                    Ok(Some(_metadata)) => ContractStatusResult {
-                        chain_id,
-                        contract_spam_status: false,
-                        message: format!(
-                            "contract metadata found on {} - {}",
-                            chain_id.name(),
-                            chain_id.status_message()
-                        ),
-                    },
+                match api_registry.get_contract_metadata(*address, chain_id).await {
+                    Ok(Some(metadata)) => {
+                        // Perform spam prediction if spam predictor is available
+                        let analysis_result =
+                            perform_spam_analysis(&metadata, state.spam_predictor(), *address)
+                                .await;
+
+                        ContractStatusResult {
+                            chain_id,
+                            contract_spam_status: analysis_result.is_spam,
+                            message: format!(
+                                "contract metadata found on {} - {} - {}",
+                                chain_id.name(),
+                                chain_id.status_message(),
+                                analysis_result.message
+                            ),
+                        }
+                    }
                     Ok(None) => ContractStatusResult {
                         chain_id,
                         contract_spam_status: false,
@@ -186,7 +230,7 @@ pub async fn contract_status_handler(
                     Err(e) => {
                         error!(
                             "failed to fetch contract metadata for {} on {}: {}",
-                            address,
+                            *address,
                             chain_id.name(),
                             e
                         );
@@ -216,8 +260,95 @@ pub async fn contract_status_handler(
             }
         };
 
-        results.insert(address, result);
+        results.insert(*address, result);
     }
 
+    let duration = start_time.elapsed();
+    let spam_count = results.values().filter(|r| r.contract_spam_status).count();
+    let total_addresses = results.len();
+
+    info!(
+        chain_id = %chain_id,
+        total_addresses = total_addresses,
+        spam_contracts = spam_count,
+        legitimate_contracts = total_addresses - spam_count,
+        duration_ms = duration.as_millis(),
+        "contract status analysis completed"
+    );
+
+    debug!(
+        results_summary = ?results.iter().map(|(addr, result)| (addr, result.contract_spam_status)).collect::<Vec<_>>(),
+        "detailed results summary"
+    );
+
     Ok(Json(ContractStatusResponse { results }))
+}
+
+/// Perform spam analysis on contract metadata
+///
+/// Returns a `SpamAnalysisResult` containing the spam classification and analysis message
+#[instrument(skip(metadata, spam_predictor), fields(
+    contract_address = %contract_address
+))]
+async fn perform_spam_analysis(
+    metadata: &api_client::ContractMetadata,
+    spam_predictor: &std::sync::Arc<spam_predictor::SpamPredictor>,
+    contract_address: Address,
+) -> SpamAnalysisResult {
+    let start_time = std::time::Instant::now();
+    debug!(contract_address = %contract_address, "starting ai spam prediction");
+
+    // Create typed prediction request
+    let request = spam_predictor::SpamPredictionRequest::spam_classification(metadata.clone());
+
+    let result = match spam_predictor.predict_spam_typed(request).await {
+        Ok(prediction_result) => {
+            let is_spam = prediction_result.classification().is_spam();
+            let duration = start_time.elapsed().as_millis();
+
+            if is_spam {
+                info!(
+                    contract_address = %contract_address,
+                    duration_ms = duration,
+                    "ai analysis classified contract as spam"
+                );
+                SpamAnalysisResult {
+                    is_spam: true,
+                    message: "AI analysis classified as spam",
+                }
+            } else {
+                info!(
+                    contract_address = %contract_address,
+                    duration_ms = duration,
+                    "ai analysis classified contract as legitimate"
+                );
+                SpamAnalysisResult {
+                    is_spam: false,
+                    message: "AI analysis classified as legitimate",
+                }
+            }
+        }
+        Err(e) => {
+            warn!(
+                contract_address = %contract_address,
+                duration_ms = start_time.elapsed().as_millis(),
+                error = %e,
+                "spam prediction failed"
+            );
+            SpamAnalysisResult {
+                is_spam: false,
+                message: "spam prediction unavailable, defaulting to not spam",
+            }
+        }
+    };
+
+    debug!(
+        contract_address = %contract_address,
+        is_spam = result.is_spam,
+        message = result.message,
+        total_duration_ms = start_time.elapsed().as_millis(),
+        "spam analysis completed"
+    );
+
+    result
 }

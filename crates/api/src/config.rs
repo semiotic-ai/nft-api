@@ -300,6 +300,48 @@ impl Default for PinaxConfig {
     }
 }
 
+/// Spam predictor configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpamPredictorConfig {
+    /// `OpenAI` API key for GPT model access
+    pub openai_api_key: ApiKey,
+    /// `OpenAI` API base URL (optional, defaults to official API)
+    pub openai_base_url: Option<ApiBaseUrl>,
+    /// `OpenAI` organization ID (optional)
+    pub openai_organization_id: Option<String>,
+    /// Path to model registry YAML file
+    pub model_registry_path: String,
+    /// Path to prompt registry JSON file
+    pub prompt_registry_path: String,
+    /// Request timeout in seconds
+    pub timeout_seconds: TimeoutSeconds,
+    /// Maximum tokens for model responses
+    pub max_tokens: Option<u32>,
+    /// Temperature for model responses (0.0 to 2.0)
+    pub temperature: Option<f32>,
+    /// Cache TTL for predictions in seconds
+    pub cache_ttl_seconds: u64,
+    /// Maximum number of cached predictions
+    pub max_cache_size: usize,
+}
+
+impl Default for SpamPredictorConfig {
+    fn default() -> Self {
+        Self {
+            openai_api_key: ApiKey::testing(),
+            openai_base_url: None,
+            openai_organization_id: None,
+            model_registry_path: "assets/configs/models.yaml".to_string(),
+            prompt_registry_path: "assets/prompts/ft_prompt.json".to_string(),
+            timeout_seconds: TimeoutSeconds::default(),
+            max_tokens: Some(10),
+            temperature: Some(0.0),
+            cache_ttl_seconds: 3600, // 1 hour
+            max_cache_size: 10000,
+        }
+    }
+}
+
 /// Rate limiting configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RateLimitingConfig {
@@ -342,10 +384,12 @@ pub enum Environment {
 /// - `SERVER_EXTERNAL_APIS_PINAX_API_AUTH`: Your Pinax auth token
 /// - `SERVER_EXTERNAL_APIS_PINAX_ENABLED`: Set to "true" to enable
 /// - `SERVER_EXTERNAL_APIS_PINAX_HEALTH_CHECK_TIMEOUT_SECONDS`: Health check timeout (default: 5)
+/// - `SERVER_SPAM_PREDICTOR_OPENAI_API_KEY`: Your `OpenAI` API key for spam prediction (required)
 /// - `SERVER_RATE_LIMITING_ENABLED`: Enable rate limiting (default: true)
 /// - `SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE`: Requests per minute limit (default: 60)
 ///
-/// APIs with placeholder credentials are automatically disabled by default for security.
+/// External APIs with placeholder credentials are automatically disabled by default for security.
+/// Spam predictor is always required and must have valid configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
     /// Server host address
@@ -358,6 +402,8 @@ pub struct ServerConfig {
     pub environment: Environment,
     /// External API configurations
     pub external_apis: ExternalApiConfig,
+    /// Spam predictor configuration
+    pub spam_predictor: SpamPredictorConfig,
     /// Rate limiting configuration
     pub rate_limiting: RateLimitingConfig,
     /// Additional configuration parameters
@@ -372,6 +418,7 @@ impl Default for ServerConfig {
             timeout_seconds: TimeoutSeconds::default(),
             environment: Environment::Development,
             external_apis: ExternalApiConfig::default(),
+            spam_predictor: SpamPredictorConfig::default(),
             rate_limiting: RateLimitingConfig::default(),
             extensions: HashMap::new(),
         }
@@ -493,6 +540,73 @@ impl ServerConfig {
             }
         }
 
+        // Validate Spam Predictor configuration (always required)
+        {
+            let api_key = self.spam_predictor.openai_api_key.value();
+
+            if api_key == "test-openai-key"
+                || api_key == "test-api-key"
+                || api_key.starts_with("REPLACE_WITH_")
+            {
+                return Err(anyhow!(
+                    "Spam Predictor has placeholder OpenAI API key. Set SERVER_SPAM_PREDICTOR_OPENAI_API_KEY or update config file."
+                ));
+            }
+
+            // Basic validation for OpenAI API key format
+            if !api_key.starts_with("sk-") && !api_key.starts_with("test-") {
+                warn!("OpenAI API key doesn't match expected format (should start with 'sk-')");
+            }
+
+            // Validate temperature range
+            if let Some(temperature) = self.spam_predictor.temperature
+                && !(0.0..=2.0).contains(&temperature)
+            {
+                return Err(anyhow!(
+                    "Spam Predictor temperature {} is invalid (must be 0.0-2.0)",
+                    temperature
+                ));
+            }
+
+            // Validate max_tokens
+            if let Some(max_tokens) = self.spam_predictor.max_tokens
+                && (max_tokens == 0 || max_tokens > 4096)
+            {
+                return Err(anyhow!(
+                    "Spam Predictor max_tokens {} is invalid (must be 1-4096)",
+                    max_tokens
+                ));
+            }
+
+            // Validate cache settings
+            if self.spam_predictor.cache_ttl_seconds == 0 {
+                return Err(anyhow!("Spam Predictor cache TTL cannot be 0"));
+            }
+
+            if self.spam_predictor.max_cache_size == 0 {
+                return Err(anyhow!("Spam Predictor max cache size cannot be 0"));
+            }
+
+            // Validate that configuration files exist
+            if !std::path::Path::new(&self.spam_predictor.model_registry_path).exists() {
+                return Err(anyhow!(
+                    "Spam Predictor model registry file not found: {} (current directory: {})",
+                    self.spam_predictor.model_registry_path,
+                    std::env::current_dir()
+                        .map_or_else(|_| "unknown".to_string(), |p| p.display().to_string())
+                ));
+            }
+
+            if !std::path::Path::new(&self.spam_predictor.prompt_registry_path).exists() {
+                return Err(anyhow!(
+                    "Spam Predictor prompt registry file not found: {} (current directory: {})",
+                    self.spam_predictor.prompt_registry_path,
+                    std::env::current_dir()
+                        .map_or_else(|_| "unknown".to_string(), |p| p.display().to_string())
+                ));
+            }
+        }
+
         Ok(())
     }
 
@@ -589,6 +703,23 @@ impl ServerConfig {
             )?
             .set_default("external_apis.pinax.max_retries", DEFAULT_MAX_RETRIES)?
             .set_default("external_apis.pinax.enabled", false)?
+            // Spam predictor defaults
+            .set_default("spam_predictor.openai_api_key", "test-openai-key")?
+            .set_default("spam_predictor.openai_base_url", None::<String>)?
+            .set_default("spam_predictor.openai_organization_id", None::<String>)?
+            .set_default(
+                "spam_predictor.model_registry_path",
+                "assets/configs/models.yaml",
+            )?
+            .set_default(
+                "spam_predictor.prompt_registry_path",
+                "assets/prompts/ft_prompt.json",
+            )?
+            .set_default("spam_predictor.timeout_seconds", DEFAULT_TIMEOUT_SECONDS)?
+            .set_default("spam_predictor.max_tokens", 10u32)?
+            .set_default("spam_predictor.temperature", 0.0f64)?
+            .set_default("spam_predictor.cache_ttl_seconds", 3600i64)?
+            .set_default("spam_predictor.max_cache_size", 10000i64)?
             // Rate limiting defaults
             .set_default("rate_limiting.enabled", true)?
             .set_default(
@@ -623,13 +754,27 @@ impl ServerConfig {
     }
 
     /// Create configuration optimized for testing
+    ///
+    /// # Panics
+    ///
+    /// Panics if the test API key "sk-test-valid-key" is invalid, which should never happen
+    /// in normal circumstances.
     pub fn for_testing() -> Self {
+        let spam_predictor_config = SpamPredictorConfig {
+            model_registry_path: "../../assets/configs/models.yaml".to_string(),
+            prompt_registry_path: "../../assets/prompts/ft_prompt.json".to_string(),
+            openai_api_key: ApiKey::new("sk-test-valid-key".to_string())
+                .expect("test api key should be valid"),
+            ..Default::default()
+        };
+
         Self {
             host: IpAddr::V4(Ipv4Addr::LOCALHOST),
             port: ServerPort::testing(), // let OS choose available port
             timeout_seconds: TimeoutSeconds::testing(),
             environment: Environment::Testing,
             external_apis: ExternalApiConfig::default(),
+            spam_predictor: spam_predictor_config,
             rate_limiting: RateLimitingConfig {
                 enabled: false,
                 requests_per_minute: 0,
@@ -716,11 +861,19 @@ mod tests {
     fn validate_placeholder_api_keys() {
         let mut config = ServerConfig::default();
 
-        // Disable all APIs first
+        // Disable external APIs
         config.external_apis.moralis.enabled = false;
         config.external_apis.pinax.enabled = false;
 
-        // Should be valid when APIs are disabled
+        // Set valid spam predictor API key and valid file paths (spam predictor is always required)
+        config.spam_predictor.openai_api_key =
+            ApiKey::new("sk-test-valid-key".to_string()).expect("test key should be valid");
+        // Use paths relative to the workspace root for testing
+        config.spam_predictor.model_registry_path = "../../assets/configs/models.yaml".to_string();
+        config.spam_predictor.prompt_registry_path =
+            "../../assets/prompts/ft_prompt.json".to_string();
+
+        // Should be valid when external APIs are disabled but spam predictor has valid key
         assert!(config.validate().is_ok());
 
         // Should fail when Moralis is enabled with placeholder key
@@ -753,6 +906,13 @@ mod tests {
             environment: Environment::Production,
             ..Default::default()
         };
+
+        // Set valid spam predictor API key and file paths first (spam predictor is always required)
+        config.spam_predictor.openai_api_key =
+            ApiKey::new("sk-test-valid-key".to_string()).expect("test key should be valid");
+        config.spam_predictor.model_registry_path = "../../assets/configs/models.yaml".to_string();
+        config.spam_predictor.prompt_registry_path =
+            "../../assets/prompts/ft_prompt.json".to_string();
 
         // Production should require rate limiting
         config.rate_limiting.enabled = false;
