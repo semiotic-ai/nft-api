@@ -167,6 +167,14 @@ just docker-dev-down
 
 ### Docker Production
 
+First, create a production configuration file based on the example:
+
+```bash
+cp config.example.json config.production.json
+```
+
+Edit `config.production.json` and update the API credentials. Ensure that you enable the external API needed for your use case, for example, `{external_apis.pinax.enabled: true}`.
+
 1. **Build production image:**
 ```bash
 just docker-build
