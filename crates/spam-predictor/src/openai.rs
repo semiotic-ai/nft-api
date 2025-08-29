@@ -254,12 +254,7 @@ impl OpenAiClient {
             max_tokens: self.default_max_tokens,
             temperature: self.default_temperature,
             top_p: None,
-            stop: Some(vec![
-                "true".to_string(),
-                "false".to_string(),
-                "True".to_string(),
-                "False".to_string(),
-            ]),
+            stop: None,
             stream: false,
         };
 
