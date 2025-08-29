@@ -251,7 +251,7 @@ impl OpenAiClient {
         let request = ChatCompletionRequest {
             model: model_id.to_string(),
             messages,
-            max_tokens: self.default_max_tokens,
+            max_tokens: Some(300),
             temperature: self.default_temperature,
             top_p: None,
             stop: None,
