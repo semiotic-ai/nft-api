@@ -72,10 +72,26 @@ docker-build-dev:
 
 # Start development environment
 docker-dev-up:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Switching to development environment..."
+    echo "Stopping production environment..."
+    docker compose -f docker-compose.prod.yml down --remove-orphans || true
+    echo "Cleaning up any existing development containers..."
+    docker compose -f docker-compose.dev.yml down --remove-orphans || true
+    echo "Starting development environment..."
     docker compose -f docker-compose.dev.yml up
 
 # Start development environment in background
 docker-dev-up-bg:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Switching to development environment..."
+    echo "Stopping production environment..."
+    docker compose -f docker-compose.prod.yml down --remove-orphans || true
+    echo "Cleaning up any existing development containers..."
+    docker compose -f docker-compose.dev.yml down --remove-orphans || true
+    echo "Starting development environment in background..."
     docker compose -f docker-compose.dev.yml up -d
 
 # Stop development environment
@@ -84,15 +100,32 @@ docker-dev-down:
 
 # Start production environment
 docker-prod-up:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Switching to production environment..."
+    echo "Stopping development environment..."
+    docker compose -f docker-compose.dev.yml down --remove-orphans || true
+    echo "Cleaning up any existing production containers..."
+    docker compose -f docker-compose.prod.yml down --remove-orphans || true
+    echo "Starting production environment..."
     docker compose -f docker-compose.prod.yml up
 
 # Start production environment in background
 docker-prod-up-bg:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Switching to production environment..."
+    echo "Stopping development environment..."
+    docker compose -f docker-compose.dev.yml down --remove-orphans || true
+    echo "Cleaning up any existing production containers..."
+    docker compose -f docker-compose.prod.yml down --remove-orphans || true
+    echo "Starting production environment in background..."
     docker compose -f docker-compose.prod.yml up -d
 
 # Stop production environment
 docker-prod-down:
     docker compose -f docker-compose.prod.yml down
+
 
 # Clean Docker images and containers
 docker-clean:

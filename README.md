@@ -10,11 +10,24 @@ A secure NFT API service built with Rust, designed for blockchain token manageme
 
 ## Architecture Overview
 
-This project is organized as a Rust workspace with three main crates:
+This project is organized as a Rust workspace with five main crates:
 
 - **`api`** - Main HTTP server implementation with Axum, configuration management, middleware, and graceful shutdown coordination
 - **`api-client`** - Common client trait and types for external API integrations
-- **`external-apis`** - Blockchain data provider integrations (Moralis, Pinax)
+- **`external-apis`** - Blockchain data provider integrations (Moralis, Pinax) with health checks
+- **`shared-types`** - Common blockchain types and chain definitions
+- **`spam-predictor`** - OpenAI-powered contract spam classification with caching
+
+## Docker Environment Isolation
+
+This project uses **advanced Docker environment isolation** to prevent development and production conflicts:
+
+- **Development Environment**: `nft-api-dev-*` containers with hot reload and full toolchain
+- **Production Environment**: `nft-api-prod-*` containers with security hardening and optimization
+- **Automatic Switching**: Commands automatically stop the other environment and clean up resources
+- **Complete Isolation**: Separate containers, networks, and volumes prevent any interference
+
+**Key Benefits**: No more build failures when switching between environments, automatic cleanup, and safe concurrent development workflows.
 
 
 ## API Endpoints
@@ -457,17 +470,22 @@ cargo audit         # Security audit of dependencies
 
 **Docker Development:**
 ```bash
-just docker-build           # Build production image
-just docker-build-dev       # Build development image
+# Environment Management (with automatic switching)
+just docker-dev-up          # Switch to dev environment (stops prod, starts dev)
+just docker-dev-up-bg       # Switch to dev environment in background
+just docker-prod-up         # Switch to prod environment (stops dev, starts prod)
+just docker-prod-up-bg      # Switch to prod environment in background
+
+# Environment Control
+just docker-dev-down        # Stop dev environment only
+just docker-prod-down       # Stop prod environment only
+just docker-clean           # Clean all environments and containers
+
+# Image Building
+just docker-build           # Build production image (cached)
+just docker-build-dev       # Build development image (cached)
 just docker-rebuild-prod    # Rebuild production image without cache
 just docker-rebuild-dev     # Rebuild development image without cache
-just docker-dev-up          # Start dev environment
-just docker-dev-up-bg       # Start dev environment in background
-just docker-dev-down        # Stop dev environment
-just docker-prod-up         # Start production environment
-just docker-prod-up-bg      # Start production in background
-just docker-prod-down       # Stop production environment
-just docker-clean           # Clean Docker images and containers
 ```
 
 **Local Testing:**
