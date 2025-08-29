@@ -182,17 +182,54 @@ pub enum HealthStatus {
 
 /// Health check status
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[schema(
+    examples(
+        json!({
+            "status": "Up",
+            "version": "0.1.0",
+            "environment": "Development",
+            "timestamp": "2025-01-22T10:30:00Z",
+            "api_clients": {
+                "moralis": "Up",
+                "pinax": "Up",
+                "spam-predictor": "Up"
+            }
+        }),
+        json!({
+            "status": "Up",
+            "version": "0.1.0",
+            "environment": "Production",
+            "timestamp": "2025-01-22T10:30:00Z",
+            "api_clients": {
+                "moralis": {"Degraded": {"reason": "High response times"}},
+                "pinax": "Up",
+                "spam-predictor": "Up"
+            }
+        }),
+        json!({
+            "status": "Up",
+            "version": "0.1.0",
+            "environment": "Production",
+            "timestamp": "2025-01-22T10:30:00Z",
+            "api_clients": {
+                "moralis": "Up",
+                "pinax": {"Down": {"reason": "API authentication failed"}},
+                "spam-predictor": "Up"
+            }
+        })
+    )
+)]
 pub struct HealthCheck {
-    /// Service status
+    /// Overall service status
     pub status: HealthStatus,
-    /// Service version
+    /// Service version from Cargo.toml
     pub version: Box<str>,
-    /// Environment
+    /// Current deployment environment
     pub environment: Environment,
-    /// Timestamp
+    /// ISO 8601 formatted timestamp of health check
     pub timestamp: String,
     /// Status of external API clients and internal services
-    #[schema(value_type = Object)]
+    #[schema(value_type = HashMap<String, HealthStatus>)]
     pub api_clients: HashMap<String, HealthStatus>,
 }
 

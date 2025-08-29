@@ -23,7 +23,7 @@ use crate::{
 #[openapi(
     info(
         title = "NFT API Service",
-        description = "A blockchain token management API service for NFT spam detection analysis.",
+        description = "A secure blockchain token management API service for NFT spam detection analysis. \n\n**Features:**\n- AI-powered spam classification using fine-tuned GPT models\n- Multi-chain support\n- External blockchain data integration (Moralis, Pinax)\n- Built-in rate limiting\n- Comprehensive health monitoring\n\n**Rate Limiting:**\nAPI endpoints are rate limited.\n\n**API Versioning:**\nThis API uses URL-based versioning. Current version is v1. All contract analysis endpoints are prefixed with `/v1/`.",
         version = "0.1.0",
         contact(
             name = "Semiotic Labs",
@@ -53,8 +53,8 @@ use crate::{
         )
     ),
     tags(
-        (name = "health", description = "Health check endpoints"),
-        (name = "contracts", description = "Contract analysis and spam detection endpoints")
+        (name = "health", description = "System health monitoring - Check API service status, external API client health, and internal service availability. Used for monitoring and alerting."),
+        (name = "contracts", description = "Blockchain contract analysis - AI-powered spam detection for NFT contracts using external blockchain data sources. Supports multiple chains with rate limiting.")
     )
 )]
 pub struct ApiDoc;

@@ -37,11 +37,13 @@ struct SpamAnalysisResult {
     get,
     path = "/health",
     tag = "health",
-    summary = "Health check endpoint",
-    description = "Returns the current health status of the API service including version, environment information, and status of all registered API clients (Moralis, Pinax, etc.).",
+    summary = "System health check",
+    description = "Returns comprehensive health status of the API service including version, environment, timestamp, and status of all external API clients and internal services (spam-predictor).",
     responses(
-        (status = 200, description = "Service is healthy", body = HealthCheck),
-        (status = 503, description = "Service unavailable", body = String)
+        (status = 200, description = "Health check completed successfully", body = HealthCheck),
+        (status = 503, description = "Service unavailable due to critical system failures", body = String,
+            example = json!("Critical system failure: Unable to initialize core services")
+        )
     )
 )]
 pub async fn health_handler(
@@ -56,11 +58,27 @@ pub async fn health_handler(
 /// Contains the contract address(es) to analyze for spam classification
 /// and the blockchain chain to analyze them on.
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[schema(
+    examples(
+        json!({
+            "chain_id": 1,
+            "addresses": ["0x1234567890abcdef1234567890abcdef12345678"]
+        }),
+        json!({
+            "chain_id": 137,
+            "addresses": ["0x1234567890abcdef1234567890abcdef12345678", "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd", "0x9876543210987654321098765432109876543210"]
+        }),
+        json!({
+            "chain_id": 42161,
+            "addresses": ["0x071126cbec1c5562530ab85fd80dd3e3a42a70b8"]
+        })
+    )
+)]
 pub struct ContractStatusRequest {
     /// Blockchain chain identifier
-    #[schema(example = 137)]
+    #[schema(example = 1)]
     chain_id: ChainId,
-    /// Contract addresses to analyze (must not be empty)
+    /// Contract addresses to analyze
     #[schema(value_type = Vec<String>, example = json!(["0x1234567890abcdef1234567890abcdef12345678"]))]
     addresses: Vec<Address>,
 }
@@ -77,6 +95,35 @@ impl ContractStatusRequest {
 
 /// Individual contract analysis result
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[schema(
+    examples(
+        json!({
+            "chain_id": 1,
+            "contract_spam_status": false,
+            "message": "contract metadata found on Ethereum, AI analysis classified as legitimate"
+        }),
+        json!({
+            "chain_id": 137,
+            "contract_spam_status": true,
+            "message": "contract metadata found on Polygon, AI analysis classified as spam"
+        }),
+        json!({
+            "chain_id": 42161,
+            "contract_spam_status": false,
+            "message": "no data found for the contract on Arbitrum"
+        }),
+        json!({
+            "chain_id": 1,
+            "contract_spam_status": false,
+            "message": "unable to retrieve contract data from external services for Ethereum"
+        }),
+        json!({
+            "chain_id": 42161,
+            "contract_spam_status": false,
+            "message": "contract analysis for Arbitrum is not yet implemented"
+        })
+    )
+)]
 pub struct ContractStatusResult {
     /// Blockchain chain identifier
     pub chain_id: ChainId,
@@ -89,10 +136,40 @@ pub struct ContractStatusResult {
 /// Response from the contract status endpoint
 /// Maps contract addresses to their analysis results
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[schema(
+    examples(
+        json!({
+            "0x1234567890abcdef1234567890abcdef12345678": {
+                "chain_id": 1,
+                "contract_spam_status": false,
+                "message": "contract metadata found on Ethereum, AI analysis classified as legitimate"
+            }
+        }),
+        json!({
+            "0x1234567890abcdef1234567890abcdef12345678": {
+                "chain_id": 137,
+                "contract_spam_status": false,
+                "message": "contract metadata found on Polygon, AI analysis classified as legitimate"
+            },
+            "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd": {
+                "chain_id": 137,
+                "contract_spam_status": true,
+                "message": "contract metadata found on Polygon, AI analysis classified as spam"
+            }
+        }),
+        json!({
+            "0x071126cbec1c5562530ab85fd80dd3e3a42a70b8": {
+                "chain_id": 42161,
+                "contract_spam_status": false,
+                "message": "contract analysis for Arbitrum is not yet implemented"
+            }
+        })
+    )
+)]
 pub struct ContractStatusResponse {
     /// Analysis results keyed by contract address
     #[serde(flatten)]
-    #[schema(value_type = Object)]
+    #[schema(value_type = HashMap<String, ContractStatusResult>)]
     pub results: HashMap<Address, ContractStatusResult>,
 }
 
@@ -114,11 +191,14 @@ pub struct ContractStatusResponse {
     path = "/v1/contract/status",
     tag = "contracts",
     summary = "Analyze contract spam status",
-    description = "Analyzes one or more blockchain contract addresses on a specific chain to determine if they are spam. Returns classification results with explanatory messages and chain implementation status.",
+    description = "Analyzes one or more blockchain contract addresses on a specific chain to determine if they are spam. Uses AI-powered classification with external blockchain data sources.",
     request_body = ContractStatusRequest,
     responses(
         (status = 200, description = "Contract analysis completed successfully", body = ContractStatusResponse),
-        (status = 400, description = "Invalid request - addresses list cannot be empty or unsupported chain", body = String),
+        (status = 400, description = "Invalid request - addresses list cannot be empty, unsupported chain, or malformed addresses", body = String),
+        (status = 429, description = "Rate limit exceeded - too many requests", body = String,
+            example = json!("Rate limit exceeded.")
+        ),
         (status = 500, description = "Internal server error during analysis", body = String)
     )
 )]
