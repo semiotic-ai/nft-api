@@ -12,15 +12,17 @@ use std::{sync::Arc, time::Instant};
 
 use api_client::{ContractMetadata, SpamAnalysis};
 use chrono::Utc;
-use serde_json;
 use tracing::{debug, info, instrument, warn};
 
 use crate::{
     cache::PredictionCacheKey,
     config::SpamPredictorConfig,
-    error::{SpamPredictorError, SpamPredictorResult},
+    error::SpamPredictorResult,
     openai::OpenAiClient,
-    types::{ModelSpec, ModelType, ModelVersion, SpamPredictionRequest, SpamPredictionResult},
+    types::{
+        ModelSpec, ModelType, ModelVersion, NftDetailsContent, SpamPredictionRequest,
+        SpamPredictionResult,
+    },
 };
 
 /// Main spam prediction orchestrator
@@ -136,23 +138,8 @@ impl SpamPredictor {
 
     /// Prepare contract metadata for AI model input
     fn prepare_contract_data(&self, metadata: &ContractMetadata) -> SpamPredictorResult<String> {
-        // Create a structured representation of the contract data
-        let contract_data = serde_json::json!({
-            "address": format!("{:?}", metadata.address),
-            "name": metadata.name,
-            "symbol": metadata.symbol,
-            "contract_type": metadata.contract_type,
-            "is_verified": metadata.is_verified,
-            "total_supply": metadata.total_supply,
-            "holder_count": metadata.holder_count,
-            "transaction_count": metadata.transaction_count,
-            "creation_block": metadata.creation_block,
-            "additional_data": metadata.additional_data
-        });
-
-        serde_json::to_string_pretty(&contract_data).map_err(|e| {
-            SpamPredictorError::json(format!("Failed to serialize contract data: {}", e))
-        })
+        let nft_content = NftDetailsContent::from_metadata(metadata);
+        Ok(nft_content.to_string())
     }
 
     /// Get the current configuration summary
@@ -544,11 +531,11 @@ model_registry:
         let metadata = create_test_metadata();
         let contract_data = predictor.prepare_contract_data(&metadata).unwrap();
 
-        // Verify the JSON structure
-        let parsed: serde_json::Value = serde_json::from_str(&contract_data).unwrap();
-        assert!(parsed["name"].as_str().unwrap().contains("Test NFT"));
-        assert!(parsed["symbol"].as_str().unwrap().contains("TEST"));
-        assert_eq!(parsed["total_supply"].as_str().unwrap(), "10000");
+        // Verify the formatted structure
+        assert!(contract_data.contains("NFT Details:"));
+        assert!(contract_data.contains("Name: Test NFT Collection"));
+        assert!(contract_data.contains("Symbol: TEST"));
+        assert!(contract_data.contains("Description: No description available"));
     }
 
     #[tokio::test]

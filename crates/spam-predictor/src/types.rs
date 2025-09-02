@@ -7,7 +7,7 @@
 //! This module provides strongly-typed wrappers that encode business invariants
 //! in the type system, making invalid states irrepresentable.
 
-use std::{sync::LazyLock, time::Duration};
+use std::{fmt, sync::LazyLock, time::Duration};
 
 use api_client::ContractMetadata;
 use regex::Regex;
@@ -446,6 +446,45 @@ impl SpamPredictionResult {
     /// Check if result was cached
     pub fn is_cached(&self) -> bool {
         self.cached
+    }
+}
+
+/// NFT details content for OpenAI message formatting
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NftDetailsContent {
+    pub name: String,
+    pub symbol: String,
+    pub description: String,
+}
+
+impl NftDetailsContent {
+    pub fn from_metadata(metadata: &ContractMetadata) -> Self {
+        Self {
+            name: metadata
+                .name
+                .clone()
+                .unwrap_or_else(|| "Unknown".to_string()),
+            symbol: metadata
+                .symbol
+                .clone()
+                .unwrap_or_else(|| "Unknown".to_string()),
+            description: metadata
+                .additional_data
+                .get("description")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "No description available".to_string()),
+        }
+    }
+}
+
+impl fmt::Display for NftDetailsContent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "NFT Details:\nName: {}\nSymbol: {}\nDescription: {}",
+            self.name, self.symbol, self.description
+        )
     }
 }
 

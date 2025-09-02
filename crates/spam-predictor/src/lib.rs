@@ -75,6 +75,6 @@ pub use error::{SpamPredictorError, SpamPredictorResult};
 pub use openai::OpenAiClient;
 pub use predictor::SpamPredictor;
 pub use types::{
-    ConfidenceScore, ModelSpec, ModelType, ModelVersion, PromptVersion, SpamClassification,
-    SpamPredictionRequest, SpamPredictionResult,
+    ConfidenceScore, ModelSpec, ModelType, ModelVersion, NftDetailsContent, PromptVersion,
+    SpamClassification, SpamPredictionRequest, SpamPredictionResult,
 };
