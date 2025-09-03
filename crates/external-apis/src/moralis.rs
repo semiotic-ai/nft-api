@@ -17,6 +17,7 @@ use shared_types::ChainId;
 use thiserror::Error;
 use tokio::time::timeout;
 use tracing::{debug, error, info, warn};
+use url::Url;
 
 /// Configuration for the Moralis API client
 #[derive(Debug, Clone)]
@@ -45,11 +46,37 @@ impl Default for MoralisConfig {
     }
 }
 
-/// Moralis API client implementation
+/// Per-chain Moralis configuration override
+#[derive(Debug, Clone)]
+pub struct PerChainMoralisConfig {
+    /// Chain-specific base URL override
+    pub base_url: Option<Url>,
+    /// Chain-specific timeout override
+    pub timeout_seconds: Option<u64>,
+    /// Chain-specific max retries override
+    pub max_retries: Option<u32>,
+}
+
+/// Resolved effective configuration for a specific chain
+#[derive(Debug, Clone)]
+struct ChainEffectiveConfig {
+    /// Effective base URL (base config or chain override)
+    base_url: String,
+    /// Effective timeout (base config or chain override)
+    timeout_seconds: u64,
+    /// Effective max retries (base config or chain override)
+    /// Note: Currently unused but prepared for future retry logic implementation
+    #[allow(dead_code)]
+    max_retries: u32,
+}
+
+/// Moralis API client implementation with chain-specific support
 #[derive(Debug)]
 pub struct MoralisClient {
     client: Client,
     config: MoralisConfig,
+    /// Chain-specific configuration overrides
+    chain_overrides: HashMap<ChainId, PerChainMoralisConfig>,
 }
 
 /// Errors specific to the Moralis API client
@@ -83,6 +110,12 @@ pub enum MoralisError {
     /// Timeout error
     #[error("Request timeout")]
     Timeout { seconds: u64 },
+
+    /// Unsupported chain
+    #[error(
+        "Unsupported chain: {chain_name} (ID: {chain_id}). This chain is not fully supported by Moralis integration"
+    )]
+    UnsupportedChain { chain_id: u64, chain_name: String },
 }
 
 impl From<MoralisError> for ApiError {
@@ -106,6 +139,14 @@ impl From<MoralisError> for ApiError {
             MoralisError::Config(message) => ApiError::Configuration { message },
             MoralisError::Timeout { seconds } => ApiError::Timeout {
                 timeout_seconds: seconds,
+            },
+            MoralisError::UnsupportedChain {
+                chain_id,
+                chain_name,
+            } => ApiError::Configuration {
+                message: format!(
+                    "Chain {chain_name} ({chain_id}) is not supported by Moralis integration"
+                ),
             },
         }
     }
@@ -142,12 +183,29 @@ impl MoralisClient {
     ///
     /// # Arguments
     ///
-    /// * `config` - Configuration for the Moralis API client
+    /// * `config` - Base configuration for the Moralis API client
     ///
     /// # Errors
     ///
     /// Returns an error if the HTTP client cannot be created or configuration is invalid
     pub fn new(config: MoralisConfig) -> Result<Self, MoralisError> {
+        Self::with_chain_overrides(config, HashMap::new())
+    }
+
+    /// Create a new Moralis API client with chain-specific configuration overrides
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Base configuration for the Moralis API client
+    /// * `chain_overrides` - Chain-specific configuration overrides
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the HTTP client cannot be created or configuration is invalid
+    pub fn with_chain_overrides(
+        config: MoralisConfig,
+        chain_overrides: HashMap<ChainId, PerChainMoralisConfig>,
+    ) -> Result<Self, MoralisError> {
         if config.api_key.trim().is_empty() {
             return Err(MoralisError::Config("API key cannot be empty".to_string()));
         }
@@ -162,26 +220,72 @@ impl MoralisClient {
             .build()
             .map_err(MoralisError::Http)?;
 
-        Ok(Self { client, config })
+        Ok(Self {
+            client,
+            config,
+            chain_overrides,
+        })
     }
 
-    /// Get contract NFTs from Moralis (similar to Python implementation)
+    /// Get the Moralis chain identifier for a given `ChainId`
+    ///
+    /// Moralis uses specific string identifiers for each chain
+    fn get_moralis_chain_identifier(&self, chain_id: ChainId) -> &'static str {
+        match chain_id {
+            ChainId::Ethereum => "eth",
+            ChainId::Polygon => "polygon",
+            ChainId::Base => "base",
+            ChainId::Avalanche => "avalanche",
+            ChainId::Arbitrum => "arbitrum",
+        }
+    }
+
+    /// Get effective configuration for a specific chain, applying overrides
+    fn get_chain_config(&self, chain_id: ChainId) -> ChainEffectiveConfig {
+        let override_config = self.chain_overrides.get(&chain_id);
+
+        ChainEffectiveConfig {
+            base_url: override_config
+                .and_then(|o| o.base_url.as_ref())
+                .map_or_else(|| self.config.base_url.clone(), ToString::to_string),
+            timeout_seconds: override_config
+                .and_then(|o| o.timeout_seconds)
+                .unwrap_or(self.config.timeout_seconds),
+            max_retries: override_config
+                .and_then(|o| o.max_retries)
+                .unwrap_or(self.config.max_retries),
+        }
+    }
+
+    /// Validate that a chain is supported for Moralis operations
+    fn validate_chain_support(&self, chain_id: ChainId) -> Result<(), MoralisError> {
+        // Check if chain is fully implemented
+        if !chain_id.is_fully_implemented() {
+            return Err(MoralisError::UnsupportedChain {
+                chain_id: chain_id.chain_id(),
+                chain_name: chain_id.name().to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Get contract NFTs from Moralis with chain-specific configuration
     ///
     /// # Arguments
     ///
     /// * `address` - Contract address to get NFTs for
-    /// * `chain` - Blockchain chain (optional, defaults to "eth")
+    /// * `chain_id` - Blockchain chain ID
     /// * `format` - Response format (optional, defaults to "decimal")
-    /// * `limit` - Number of NFTs to return (optional, defaults to 100)
+    /// * `limit` - Number of NFTs to return (optional, defaults to 1)
     /// * `normalize_metadata` - Whether to normalize metadata (optional, defaults to true)
     ///
     /// # Errors
     ///
-    /// Returns an error if the request fails or the response cannot be parsed
+    /// Returns an error if the request fails, the chain is unsupported, or the response cannot be parsed
     pub async fn get_contract_nfts(
         &self,
         address: Address,
-        chain: Option<&str>,
+        chain_id: ChainId,
         format: Option<&str>,
         limit: Option<u32>,
         normalize_metadata: Option<bool>,
@@ -192,23 +296,34 @@ impl MoralisClient {
             ));
         }
 
-        let url = format!("{}/nft/{}", self.config.base_url, address);
+        // Validate chain support
+        self.validate_chain_support(chain_id)?;
 
-        let chain = chain.unwrap_or("eth");
+        // Get chain-specific configuration
+        let chain_config = self.get_chain_config(chain_id);
+        let moralis_chain = self.get_moralis_chain_identifier(chain_id);
+
+        let url = format!("{}/nft/{}", chain_config.base_url, address);
+
         let format = format.unwrap_or("decimal");
         let limit = limit.unwrap_or(1);
         let normalize_metadata = normalize_metadata.unwrap_or(true);
 
         debug!(
             url,
-            chain, format, limit, normalize_metadata, "fetching contract NFTs from Moralis"
+            chain = moralis_chain,
+            chain_id = %chain_id,
+            format,
+            limit,
+            normalize_metadata,
+            "fetching contract NFTs from Moralis with chain-specific config"
         );
 
         let request = self
             .client
             .get(&url)
             .query(&[
-                ("chain", chain),
+                ("chain", moralis_chain),
                 ("format", format),
                 ("limit", &limit.to_string()),
                 ("normalizeMetadata", &normalize_metadata.to_string()),
@@ -217,12 +332,12 @@ impl MoralisClient {
             .header("accept", "application/json");
 
         let response = timeout(
-            Duration::from_secs(self.config.timeout_seconds),
+            Duration::from_secs(chain_config.timeout_seconds),
             request.send(),
         )
         .await
         .map_err(|_| MoralisError::Timeout {
-            seconds: self.config.timeout_seconds,
+            seconds: chain_config.timeout_seconds,
         })?
         .map_err(MoralisError::Http)?;
 
@@ -369,12 +484,14 @@ impl ApiClient for MoralisClient {
 
         // Get contract NFTs and extract metadata from the first NFT
         let nfts_response = self
-            .get_contract_nfts(address, None, None, Some(1), None)
+            .get_contract_nfts(address, chain_id, None, Some(1), None)
             .await
             .map_err(|e| {
                 error!(
-                    "Failed to fetch contract NFTs from Moralis for address {}: {}",
-                    address, e
+                    "Failed to fetch contract NFTs from Moralis for address {} on chain {}: {}",
+                    address,
+                    chain_id.name(),
+                    e
                 );
                 e
             })?;
@@ -460,7 +577,7 @@ mod tests {
         // This would need a mock server to test properly, but we can at least test the method exists
         // The integration tests cover the full functionality with wiremock
         let result = client
-            .get_contract_nfts(test_address, None, None, None, None)
+            .get_contract_nfts(test_address, ChainId::Ethereum, None, None, None)
             .await;
         // We expect this to fail since we don't have a real server, but method should exist
         assert!(result.is_err());

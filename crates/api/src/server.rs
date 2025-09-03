@@ -12,8 +12,8 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use axum::{Router, http::HeaderName};
 use external_apis::{
-    ApiRegistry, MoralisClient, MoralisConfig as ExternalMoralisConfig, PinaxClient,
-    PinaxConfig as ExternalPinaxConfig,
+    ApiRegistry, MoralisClient, MoralisConfig as ExternalMoralisConfig, PerChainMoralisConfig,
+    PerChainPinaxConfig, PinaxClient, PinaxConfig as ExternalPinaxConfig,
 };
 use hyper::Request;
 use spam_predictor::{SpamPredictor, SpamPredictorConfig};
@@ -107,7 +107,29 @@ impl Server {
                     .as_secs(),
                 max_retries: config.external_apis.moralis.max_retries,
             };
-            Some(MoralisClient::new(moralis_config).expect("Failed to create Moralis client"))
+
+            // Build chain-specific Moralis overrides from configuration
+            let mut chain_overrides = std::collections::HashMap::new();
+            for (chain_id, chain_config) in &config.chains {
+                if let Some(moralis_override) = &chain_config.moralis {
+                    chain_overrides.insert(
+                        *chain_id,
+                        PerChainMoralisConfig {
+                            base_url: moralis_override.base_url.clone(),
+                            timeout_seconds: moralis_override
+                                .timeout_seconds
+                                .as_ref()
+                                .map(|t| t.value().as_secs()),
+                            max_retries: moralis_override.max_retries,
+                        },
+                    );
+                }
+            }
+
+            Some(
+                MoralisClient::with_chain_overrides(moralis_config, chain_overrides)
+                    .expect("Failed to create Moralis client"),
+            )
         } else {
             None
         };
@@ -129,7 +151,29 @@ impl Server {
                 config.external_apis.pinax.max_retries,
             )
             .expect("Failed to create Pinax config");
-            Some(PinaxClient::new(pinax_config).expect("Failed to create Pinax client"))
+
+            // Build chain-specific Pinax overrides from configuration
+            let mut chain_overrides = std::collections::HashMap::new();
+            for (chain_id, chain_config) in &config.chains {
+                if let Some(pinax_override) = &chain_config.pinax {
+                    chain_overrides.insert(
+                        *chain_id,
+                        PerChainPinaxConfig {
+                            db_name: Some(pinax_override.db_name.clone()),
+                            timeout_seconds: pinax_override
+                                .timeout_seconds
+                                .as_ref()
+                                .map(|t| t.value().as_secs()),
+                            max_retries: pinax_override.max_retries,
+                        },
+                    );
+                }
+            }
+
+            Some(
+                PinaxClient::with_chain_overrides(pinax_config, chain_overrides)
+                    .expect("Failed to create Pinax client"),
+            )
         } else {
             None
         };

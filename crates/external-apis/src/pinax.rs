@@ -84,11 +84,37 @@ impl PinaxConfig {
     }
 }
 
-/// Pinax API client implementation
+/// Per-chain Pinax configuration override
+#[derive(Debug, Clone)]
+pub struct PerChainPinaxConfig {
+    /// Chain-specific database name override
+    pub db_name: Option<String>,
+    /// Chain-specific timeout override
+    pub timeout_seconds: Option<u64>,
+    /// Chain-specific max retries override
+    pub max_retries: Option<u32>,
+}
+
+/// Resolved effective configuration for a specific chain
+#[derive(Debug, Clone)]
+struct ChainPinaxEffectiveConfig {
+    /// Effective database name (base config or chain override)
+    db_name: String,
+    /// Effective timeout (base config or chain override)
+    timeout_seconds: u64,
+    /// Effective max retries (base config or chain override)
+    /// Note: Currently unused but prepared for future retry logic implementation
+    #[allow(dead_code)]
+    max_retries: u32,
+}
+
+/// Pinax API client implementation with chain-specific support
 #[derive(Debug)]
 pub struct PinaxClient {
     client: Client,
     config: PinaxConfig,
+    /// Chain-specific configuration overrides
+    chain_overrides: HashMap<ChainId, PerChainPinaxConfig>,
 }
 
 /// Errors specific to the Pinax API client
@@ -122,6 +148,12 @@ pub enum PinaxError {
     /// SQL query error
     #[error("SQL query error: {0}")]
     SqlError(String),
+
+    /// Unsupported chain
+    #[error(
+        "Unsupported chain: {chain_name} (ID: {chain_id}). This chain is not fully supported by Pinax integration"
+    )]
+    UnsupportedChain { chain_id: u64, chain_name: String },
 }
 
 impl From<PinaxError> for ApiError {
@@ -144,6 +176,14 @@ impl From<PinaxError> for ApiError {
                 timeout_seconds: seconds,
             },
             PinaxError::SqlError(message) => ApiError::InvalidResponse { message },
+            PinaxError::UnsupportedChain {
+                chain_id,
+                chain_name,
+            } => ApiError::Configuration {
+                message: format!(
+                    "Chain {chain_name} ({chain_id}) is not supported by Pinax integration"
+                ),
+            },
         }
     }
 }
@@ -168,29 +208,86 @@ impl PinaxClient {
     ///
     /// # Arguments
     ///
-    /// * `config` - Configuration for the Pinax API client
+    /// * `config` - Base configuration for the Pinax API client
     ///
     /// # Errors
     ///
     /// Returns an error if the HTTP client cannot be created
     pub fn new(config: PinaxConfig) -> Result<Self, PinaxError> {
+        Self::with_chain_overrides(config, HashMap::new())
+    }
+
+    /// Create a new Pinax API client with chain-specific configuration overrides
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Base configuration for the Pinax API client
+    /// * `chain_overrides` - Chain-specific configuration overrides
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the HTTP client cannot be created or configuration is invalid
+    pub fn with_chain_overrides(
+        config: PinaxConfig,
+        chain_overrides: HashMap<ChainId, PerChainPinaxConfig>,
+    ) -> Result<Self, PinaxError> {
         let client = Client::builder()
             .timeout(Duration::from_secs(config.timeout_seconds))
             .user_agent("nft-api/0.1.0")
             .build()
             .map_err(PinaxError::Http)?;
 
-        Ok(Self { client, config })
+        Ok(Self {
+            client,
+            config,
+            chain_overrides,
+        })
     }
 
-    /// Get NFT contract metadata from Pinax using SQL query
+    /// Get effective configuration for a specific chain, applying overrides
+    fn get_chain_config(&self, chain_id: ChainId) -> ChainPinaxEffectiveConfig {
+        let override_config = self.chain_overrides.get(&chain_id);
+
+        ChainPinaxEffectiveConfig {
+            db_name: override_config
+                .and_then(|o| o.db_name.as_ref())
+                .map_or_else(|| self.config.db_name.as_str().to_string(), String::clone),
+            timeout_seconds: override_config
+                .and_then(|o| o.timeout_seconds)
+                .unwrap_or(self.config.timeout_seconds),
+            max_retries: override_config
+                .and_then(|o| o.max_retries)
+                .unwrap_or(self.config.max_retries),
+        }
+    }
+
+    /// Validate that a chain is supported for Pinax operations
+    fn validate_chain_support(&self, chain_id: ChainId) -> Result<(), PinaxError> {
+        // Check if chain is fully implemented
+        if !chain_id.is_fully_implemented() {
+            return Err(PinaxError::UnsupportedChain {
+                chain_id: chain_id.chain_id(),
+                chain_name: chain_id.name().to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Get NFT contract metadata from Pinax using SQL query with chain-specific configuration
     async fn get_nft_metadata(
         &self,
         address: Address,
+        chain_id: ChainId,
     ) -> Result<Option<ContractMetadata>, PinaxError> {
         if address == Address::ZERO {
             return Err(PinaxError::Config("Invalid address provided".to_string()));
         }
+
+        // Validate chain support
+        self.validate_chain_support(chain_id)?;
+
+        // Get chain-specific configuration
+        let chain_config = self.get_chain_config(chain_id);
 
         let address_lower = format!("{address:#x}").to_lowercase();
 
@@ -215,14 +312,19 @@ impl PinaxClient {
             LIMIT 1
             FORMAT JSON
             ",
-            self.config.db_name.as_str(),
+            chain_config.db_name,
             address_lower,
-            self.config.db_name.as_str(),
+            chain_config.db_name,
             address_lower,
-            self.config.db_name.as_str()
+            chain_config.db_name
         );
 
-        debug!(query, "executing Pinax SQL query");
+        debug!(
+            query,
+            chain_id = %chain_id,
+            db_name = %chain_config.db_name,
+            "executing Pinax SQL query with chain-specific database"
+        );
 
         let request = self
             .client
@@ -235,12 +337,12 @@ impl PinaxClient {
             .header("Content-Type", "text/plain");
 
         let response = timeout(
-            Duration::from_secs(self.config.timeout_seconds),
+            Duration::from_secs(chain_config.timeout_seconds),
             request.send(),
         )
         .await
         .map_err(|_| PinaxError::Timeout {
-            seconds: self.config.timeout_seconds,
+            seconds: chain_config.timeout_seconds,
         })?
         .map_err(PinaxError::Http)?;
 
@@ -374,7 +476,7 @@ impl ApiClient for PinaxClient {
             address,
             chain_id.name()
         );
-        match self.get_nft_metadata(address).await {
+        match self.get_nft_metadata(address, chain_id).await {
             Ok(metadata) => Ok(metadata),
             Err(e) => {
                 error!(
