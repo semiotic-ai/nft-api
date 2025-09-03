@@ -13,6 +13,7 @@ use alloy_primitives::Address;
 use api_client::{ApiClient, ApiError, ContractMetadata, ContractType, HealthStatus};
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
+use shared_types::ChainId;
 use thiserror::Error;
 use tokio::time::timeout;
 use tracing::{debug, error, info, warn};
@@ -358,8 +359,13 @@ impl ApiClient for MoralisClient {
     async fn get_contract_metadata(
         &self,
         address: Address,
+        chain_id: ChainId,
     ) -> Result<Option<ContractMetadata>, ApiError> {
-        info!("Fetching contract metadata for address: {}", address);
+        info!(
+            "Fetching contract metadata for address: {} on chain: {}",
+            address,
+            chain_id.name()
+        );
 
         // Get contract NFTs and extract metadata from the first NFT
         let nfts_response = self

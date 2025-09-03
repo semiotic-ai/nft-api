@@ -129,12 +129,13 @@ impl ApiRegistry {
         match self.is_moralis_healthy().await {
             Ok(true) => {
                 debug!(
-                    "Trying healthy Moralis client for chain {} (Note: chain_id not yet supported by client)",
+                    "Trying healthy Moralis client for chain {}",
                     chain_id.name()
                 );
-                // TODO: Update client interface to accept chain_id parameter
-                // Currently chain_id is used for logging/tracking but not passed to client
-                match moralis_client.get_contract_metadata(address).await {
+                match moralis_client
+                    .get_contract_metadata(address, chain_id)
+                    .await
+                {
                     Ok(Some(metadata)) => {
                         info!("Successfully retrieved metadata from Moralis client");
                         Some(Some(metadata))
@@ -173,13 +174,8 @@ impl ApiRegistry {
 
         match self.is_pinax_healthy().await {
             Ok(true) => {
-                debug!(
-                    "Trying healthy Pinax client for chain {} (Note: chain_id not yet supported by client)",
-                    chain_id.name()
-                );
-                // TODO: Update client interface to accept chain_id parameter
-                // Currently chain_id is used for logging/tracking but not passed to client
-                match pinax_client.get_contract_metadata(address).await {
+                debug!("Trying healthy Pinax client for chain {}", chain_id.name());
+                match pinax_client.get_contract_metadata(address, chain_id).await {
                     Ok(Some(metadata)) => {
                         info!("Successfully retrieved metadata from Pinax client");
                         Some(Some(metadata))

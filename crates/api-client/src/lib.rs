@@ -23,6 +23,7 @@
 
 use alloy_primitives::Address;
 use serde::{Deserialize, Serialize};
+use shared_types::ChainId;
 use thiserror::Error;
 
 pub mod health;
@@ -43,11 +44,12 @@ pub trait ApiClient: Send + Sync {
     /// Returns an error if the health check fails
     fn health_check(&self) -> impl Future<Output = Result<HealthStatus, ApiError>> + Send;
 
-    /// Get contract metadata for the given address
+    /// Get contract metadata for the given address on a specific blockchain chain
     ///
     /// # Arguments
     ///
     /// * `address` - The contract address to retrieve metadata for
+    /// * `chain_id` - The blockchain chain to query for the contract
     ///
     /// # Returns
     ///
@@ -58,10 +60,11 @@ pub trait ApiClient: Send + Sync {
     /// # Errors
     ///
     /// Returns an error if the API request fails, rate limits are exceeded,
-    /// or there are network/authentication issues
+    /// the chain is not supported, or there are network/authentication issues
     fn get_contract_metadata(
         &self,
         address: Address,
+        chain_id: ChainId,
     ) -> impl Future<Output = Result<Option<ContractMetadata>, ApiError>> + Send;
 
     /// Get the name/identifier of this API client

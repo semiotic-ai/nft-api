@@ -11,6 +11,7 @@ use alloy_primitives::Address;
 use api_client::{ApiClient, ApiError, ContractType, HealthStatus};
 use external_apis::{MoralisClient, MoralisConfig, MoralisError};
 use serde_json::json;
+use shared_types::ChainId;
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
     matchers::{header, method, path},
@@ -59,7 +60,10 @@ async fn get_nft_metadata_success() {
         .mount(&mock_server)
         .await;
 
-    let result = client.get_contract_metadata(test_address).await.unwrap();
+    let result = client
+        .get_contract_metadata(test_address, ChainId::Ethereum)
+        .await
+        .unwrap();
 
     assert!(result.is_some());
     let metadata = result.unwrap();
@@ -88,7 +92,10 @@ async fn get_contract_metadata_not_found() {
         .mount(&mock_server)
         .await;
 
-    let result = client.get_contract_metadata(test_address).await.unwrap();
+    let result = client
+        .get_contract_metadata(test_address, ChainId::Ethereum)
+        .await
+        .unwrap();
     assert!(result.is_none());
 }
 
@@ -107,7 +114,9 @@ async fn get_contract_metadata_unauthorized() {
         .mount(&mock_server)
         .await;
 
-    let result = client.get_contract_metadata(test_address).await;
+    let result = client
+        .get_contract_metadata(test_address, ChainId::Ethereum)
+        .await;
 
     assert!(result.is_err());
     match result.unwrap_err() {
@@ -131,7 +140,9 @@ async fn get_contract_metadata_rate_limited() {
         .mount(&mock_server)
         .await;
 
-    let result = client.get_contract_metadata(test_address).await;
+    let result = client
+        .get_contract_metadata(test_address, ChainId::Ethereum)
+        .await;
 
     assert!(result.is_err());
     match result.unwrap_err() {
@@ -155,7 +166,9 @@ async fn get_contract_metadata_server_error() {
         .mount(&mock_server)
         .await;
 
-    let result = client.get_contract_metadata(test_address).await;
+    let result = client
+        .get_contract_metadata(test_address, ChainId::Ethereum)
+        .await;
 
     assert!(result.is_err());
     match result.unwrap_err() {

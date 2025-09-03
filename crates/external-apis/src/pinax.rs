@@ -13,6 +13,7 @@ use alloy_primitives::Address;
 use api_client::{ApiClient, ApiError, ContractMetadata, ContractType, HealthStatus};
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
+use shared_types::ChainId;
 use thiserror::Error;
 use tokio::time::timeout;
 use tracing::{debug, error, info, warn};
@@ -366,10 +367,12 @@ impl ApiClient for PinaxClient {
     async fn get_contract_metadata(
         &self,
         address: Address,
+        chain_id: ChainId,
     ) -> Result<Option<ContractMetadata>, ApiError> {
         info!(
-            "Fetching contract metadata from Pinax for address: {}",
-            address
+            "Fetching contract metadata from Pinax for address: {} on chain: {}",
+            address,
+            chain_id.name()
         );
         match self.get_nft_metadata(address).await {
             Ok(metadata) => Ok(metadata),
@@ -508,7 +511,9 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let result = client.get_contract_metadata(test_address()).await;
+        let result = client
+            .get_contract_metadata(test_address(), ChainId::Ethereum)
+            .await;
 
         assert!(result.is_ok());
         let metadata = result.unwrap();
@@ -524,7 +529,9 @@ mod tests {
         let config = PinaxConfig::default_test();
         let client = PinaxClient::new(config).unwrap();
 
-        let result = client.get_contract_metadata(Address::ZERO).await;
+        let result = client
+            .get_contract_metadata(Address::ZERO, ChainId::Ethereum)
+            .await;
         assert!(result.is_err());
         let error = result.unwrap_err();
         assert!(matches!(error, ApiError::Configuration { .. }));
@@ -544,7 +551,9 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let result = client.get_contract_metadata(test_address()).await;
+        let result = client
+            .get_contract_metadata(test_address(), ChainId::Ethereum)
+            .await;
         assert!(result.is_err());
     }
 
@@ -560,7 +569,9 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let result = client.get_contract_metadata(test_address()).await;
+        let result = client
+            .get_contract_metadata(test_address(), ChainId::Ethereum)
+            .await;
         assert!(result.is_err());
         let error = result.unwrap_err();
         assert!(matches!(error, ApiError::InvalidResponse { .. }));

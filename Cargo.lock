@@ -132,6 +132,7 @@ dependencies = [
  "mockall",
  "serde",
  "serde_json",
+ "shared-types",
  "thiserror",
  "tokio-test",
  "wiremock",
