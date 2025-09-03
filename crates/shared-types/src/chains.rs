@@ -100,6 +100,12 @@ impl FromStr for ChainId {
     type Err = ChainIdParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // First try to parse as a numeric chain ID
+        if let Ok(id) = s.parse::<u64>() {
+            return Self::try_from(id).map_err(|_| ChainIdParseError::InvalidId(id));
+        }
+
+        // Fall back to parsing as a chain name
         match s.to_uppercase().as_str() {
             "POLYGON" | "MATIC" => Ok(Self::Polygon),
             "ETHEREUM" | "UNI" => Ok(Self::Ethereum),
@@ -148,7 +154,7 @@ impl<'de> Deserialize<'de> for ChainId {
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 write!(
                     formatter,
-                    "a valid chain ID (137, 1, 8453, 43114, 42161) or name (Polygon, Ethereum, Base, Avalanche, Arbitrum)"
+                    "a valid chain ID (137, 1, 8453, 43114, 42161), chain ID string (\"137\", \"1\", etc.), or name (Polygon, Ethereum, Base, Avalanche, Arbitrum)"
                 )
             }
 
@@ -241,6 +247,13 @@ mod tests {
 
     #[test]
     fn chain_id_from_str() {
+        // Test numeric chain IDs as strings (for configuration parsing)
+        assert_eq!(ChainId::from_str("137").unwrap(), ChainId::Polygon);
+        assert_eq!(ChainId::from_str("1").unwrap(), ChainId::Ethereum);
+        assert_eq!(ChainId::from_str("8453").unwrap(), ChainId::Base);
+        assert_eq!(ChainId::from_str("43114").unwrap(), ChainId::Avalanche);
+        assert_eq!(ChainId::from_str("42161").unwrap(), ChainId::Arbitrum);
+
         // Test primary names
         assert_eq!(ChainId::from_str("POLYGON").unwrap(), ChainId::Polygon);
         assert_eq!(ChainId::from_str("polygon").unwrap(), ChainId::Polygon);
@@ -256,6 +269,7 @@ mod tests {
         assert_eq!(ChainId::from_str("ARB").unwrap(), ChainId::Arbitrum);
 
         assert!(ChainId::from_str("UNKNOWN").is_err());
+        assert!(ChainId::from_str("999").is_err());
     }
 
     #[test]

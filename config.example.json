@@ -39,5 +39,52 @@
     "enabled": true,
     "requests_per_minute": 60
   },
+  "chains": {
+    "1": {
+      "enabled": true,
+      "moralis": {
+        "timeout_seconds": 45
+      },
+      "pinax": {
+        "db_name": "mainnet:evm-nft-tokens@v0.6.2"
+      }
+    },
+    "137": {
+      "enabled": true,
+      "moralis": {
+        "timeout_seconds": 45
+      },
+      "pinax": {
+        "db_name": "matic:evm-nft-tokens@v0.5.1"
+      }
+    },
+    "8453": {
+      "enabled": false,
+      "moralis": {
+        "timeout_seconds": 30
+      },
+      "pinax": {
+        "db_name": "base:evm-nft-tokens@v0.5.1"
+      }
+    },
+    "43114": {
+      "enabled": false,
+      "moralis": {
+        "timeout_seconds": 30
+      },
+      "pinax": {
+        "db_name": "avalanche:evm-nft-tokens@v0.5.1"
+      }
+    },
+    "42161": {
+      "enabled": false,
+      "moralis": {
+        "timeout_seconds": 30
+      },
+      "pinax": {
+        "db_name": "arbitrum-one:evm-nft-tokens@v0.5.1"
+      }
+    }
+  },
   "extensions": {}
 }

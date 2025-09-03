@@ -16,7 +16,10 @@ use std::{
 use anyhow::{Result, anyhow, ensure};
 use config::{Config, ConfigError, Environment as ConfigEnv, File};
 use serde::{Deserialize, Deserializer, Serialize, de};
+use serde_with::{DisplayFromStr, serde_as};
+use shared_types::ChainId;
 use tracing::warn;
+use url::Url;
 use utoipa::ToSchema;
 
 use crate::error::{ServerError, ServerResult};
@@ -145,47 +148,6 @@ impl Default for TimeoutSeconds {
     }
 }
 
-/// A validated API base URL
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct ApiBaseUrl(String);
-
-impl ApiBaseUrl {
-    /// Create a new `ApiBaseUrl`, ensuring it's a valid HTTP(S) URL
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the URL is invalid or not HTTP(S)
-    pub fn new(url: String) -> Result<Self> {
-        ensure!(!url.is_empty(), "API base URL cannot be empty");
-        ensure!(
-            url.starts_with("http://") || url.starts_with("https://"),
-            "API base URL must start with http:// or https://"
-        );
-        ensure!(!url.ends_with('/'), "API base URL should not end with '/'");
-        Ok(Self(url))
-    }
-
-    /// Create a default Moralis API URL for development
-    pub fn default_moralis() -> Self {
-        Self("https://deep-index.moralis.io/api/v2".to_string())
-    }
-
-    /// Get the URL value
-    pub fn value(&self) -> &str {
-        &self.0
-    }
-}
-
-impl<'de> Deserialize<'de> for ApiBaseUrl {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let url = String::deserialize(deserializer)?;
-        Self::new(url).map_err(|e| de::Error::custom(e.to_string()))
-    }
-}
-
 /// A validated API key
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ApiKey(String);
@@ -235,7 +197,7 @@ pub struct ExternalApiConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MoralisConfig {
     /// Base URL for Moralis API
-    pub base_url: ApiBaseUrl,
+    pub base_url: Url,
     /// API key for authentication
     pub api_key: ApiKey,
     /// Request timeout in seconds
@@ -251,7 +213,8 @@ pub struct MoralisConfig {
 impl Default for MoralisConfig {
     fn default() -> Self {
         Self {
-            base_url: ApiBaseUrl::default_moralis(),
+            base_url: Url::parse("https://deep-index.moralis.io/api/v2")
+                .expect("valid default Moralis URL"),
             api_key: ApiKey::testing(), // Will be overridden in production
             timeout_seconds: TimeoutSeconds::default(),
             health_check_timeout_seconds: TimeoutSeconds::new(DEFAULT_HEALTH_CHECK_TIMEOUT_SECONDS)
@@ -266,7 +229,7 @@ impl Default for MoralisConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PinaxConfig {
     /// Base URL for Pinax API endpoint
-    pub endpoint: ApiBaseUrl,
+    pub endpoint: Url,
     /// Username for Pinax API authentication
     pub api_user: ApiKey,
     /// Password/token for Pinax API authentication
@@ -286,8 +249,7 @@ pub struct PinaxConfig {
 impl Default for PinaxConfig {
     fn default() -> Self {
         Self {
-            endpoint: ApiBaseUrl::new("https://api.pinax.network/sql".to_string())
-                .expect("known to be valid"),
+            endpoint: Url::parse("https://api.pinax.network/sql").expect("valid default Pinax URL"),
             api_user: ApiKey::testing(),
             api_auth: ApiKey::testing(),
             db_name: "mainnet:evm-nft-tokens@v0.6.2".to_string(),
@@ -300,13 +262,66 @@ impl Default for PinaxConfig {
     }
 }
 
+/// Chain-specific configuration for multi-chain support
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChainConfig {
+    /// Enable/disable this chain
+    pub enabled: bool,
+    /// Chain-specific Moralis configuration (optional override)
+    pub moralis: Option<ChainMoralisConfig>,
+    /// Chain-specific Pinax configuration (optional override)
+    pub pinax: Option<ChainPinaxConfig>,
+}
+
+/// Chain-specific Moralis API configuration
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ChainMoralisConfig {
+    /// Chain-specific base URL (optional)
+    pub base_url: Option<Url>,
+    /// Chain-specific timeout (optional)
+    pub timeout_seconds: Option<TimeoutSeconds>,
+    /// Chain-specific max retries (optional)
+    pub max_retries: Option<u32>,
+}
+
+/// Chain-specific Pinax API configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChainPinaxConfig {
+    /// Chain-specific database name (required for each chain)
+    pub db_name: String,
+    /// Chain-specific timeout (optional)
+    pub timeout_seconds: Option<TimeoutSeconds>,
+    /// Chain-specific max retries (optional)
+    pub max_retries: Option<u32>,
+}
+
+impl Default for ChainConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            moralis: None,
+            pinax: None,
+        }
+    }
+}
+
+impl Default for ChainPinaxConfig {
+    fn default() -> Self {
+        Self {
+            db_name: "mainnet:evm-nft-tokens@v0.6.2".to_string(),
+            timeout_seconds: None,
+            max_retries: None,
+        }
+    }
+}
+
 /// Spam predictor configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpamPredictorConfig {
     /// `OpenAI` API key for GPT model access
     pub openai_api_key: ApiKey,
     /// `OpenAI` API base URL (optional, defaults to official API)
-    pub openai_base_url: Option<ApiBaseUrl>,
+    pub openai_base_url: Option<Url>,
     /// `OpenAI` organization ID (optional)
     pub openai_organization_id: Option<String>,
     /// Path to model registry YAML file
@@ -390,6 +405,7 @@ pub enum Environment {
 ///
 /// External APIs with placeholder credentials are automatically disabled by default for security.
 /// Spam predictor is always required and must have valid configuration.
+#[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
     /// Server host address
@@ -406,6 +422,9 @@ pub struct ServerConfig {
     pub spam_predictor: SpamPredictorConfig,
     /// Rate limiting configuration
     pub rate_limiting: RateLimitingConfig,
+    /// Chain-specific configurations
+    #[serde_as(as = "HashMap<DisplayFromStr, _>")]
+    pub chains: HashMap<ChainId, ChainConfig>,
     /// Additional configuration parameters
     pub extensions: HashMap<String, String>,
 }
@@ -420,12 +439,93 @@ impl Default for ServerConfig {
             external_apis: ExternalApiConfig::default(),
             spam_predictor: SpamPredictorConfig::default(),
             rate_limiting: RateLimitingConfig::default(),
+            chains: Self::default_chains(),
             extensions: HashMap::new(),
         }
     }
 }
 
 impl ServerConfig {
+    /// Create default chain configurations based on the test config mappings
+    fn default_chains() -> HashMap<ChainId, ChainConfig> {
+        let mut chains = HashMap::new();
+
+        // Add default configurations for all supported chains
+        // Based on the test config from assets/configs/test_multi_chain.yaml
+
+        // Ethereum (mainnet)
+        chains.insert(
+            ChainId::Ethereum,
+            ChainConfig {
+                enabled: true,
+                moralis: None, // Use global config
+                pinax: Some(ChainPinaxConfig {
+                    db_name: "mainnet:evm-nft-tokens@v0.6.2".to_string(),
+                    timeout_seconds: None,
+                    max_retries: None,
+                }),
+            },
+        );
+
+        // Polygon (matic)
+        chains.insert(
+            ChainId::Polygon,
+            ChainConfig {
+                enabled: true,
+                moralis: None, // Use global config
+                pinax: Some(ChainPinaxConfig {
+                    db_name: "matic:evm-nft-tokens@v0.5.1".to_string(),
+                    timeout_seconds: None,
+                    max_retries: None,
+                }),
+            },
+        );
+
+        // Base
+        chains.insert(
+            ChainId::Base,
+            ChainConfig {
+                enabled: false, // Partial implementation
+                moralis: None,
+                pinax: Some(ChainPinaxConfig {
+                    db_name: "base:evm-nft-tokens@v0.5.1".to_string(),
+                    timeout_seconds: None,
+                    max_retries: None,
+                }),
+            },
+        );
+
+        // Avalanche
+        chains.insert(
+            ChainId::Avalanche,
+            ChainConfig {
+                enabled: false, // Planned implementation
+                moralis: None,
+                pinax: Some(ChainPinaxConfig {
+                    db_name: "avalanche:evm-nft-tokens@v0.5.1".to_string(),
+                    timeout_seconds: None,
+                    max_retries: None,
+                }),
+            },
+        );
+
+        // Arbitrum
+        chains.insert(
+            ChainId::Arbitrum,
+            ChainConfig {
+                enabled: false, // Planned implementation
+                moralis: None,
+                pinax: Some(ChainPinaxConfig {
+                    db_name: "arbitrum-one:evm-nft-tokens@v0.5.1".to_string(),
+                    timeout_seconds: None,
+                    max_retries: None,
+                }),
+            },
+        );
+
+        chains
+    }
+
     /// Create configuration from environment variables and optional configuration files
     ///
     /// # Errors
@@ -484,9 +584,9 @@ impl ServerConfig {
             "Timeout must be at least 1 second"
         );
 
-        // Validate external API URLs are properly formatted (already validated in ApiBaseUrl::new())
+        // Validate external API URLs are properly formatted
         if self.external_apis.moralis.enabled {
-            let base_url = self.external_apis.moralis.base_url.value();
+            let base_url = self.external_apis.moralis.base_url.as_str();
             ensure!(
                 base_url.starts_with("http://") || base_url.starts_with("https://"),
                 "Moralis base_url must be a valid HTTP(S) URL"
@@ -494,11 +594,76 @@ impl ServerConfig {
         }
 
         if self.external_apis.pinax.enabled {
-            let endpoint = self.external_apis.pinax.endpoint.value();
+            let endpoint = self.external_apis.pinax.endpoint.as_str();
             ensure!(
                 endpoint.starts_with("http://") || endpoint.starts_with("https://"),
                 "Pinax endpoint must be a valid HTTP(S) URL"
             );
+        }
+
+        // Validate chain configurations
+        self.validate_chain_configurations()?;
+
+        Ok(())
+    }
+
+    /// Validate chain-specific configurations
+    fn validate_chain_configurations(&self) -> Result<()> {
+        // Ensure at least one chain is enabled
+        let enabled_chains: Vec<_> = self
+            .chains
+            .iter()
+            .filter(|(_, config)| config.enabled)
+            .collect();
+
+        if enabled_chains.is_empty() {
+            return Err(anyhow!(
+                "At least one chain must be enabled. Current enabled chains: none"
+            ));
+        }
+
+        // Validate each enabled chain's configuration
+        for (chain_id, chain_config) in &self.chains {
+            if !chain_config.enabled {
+                continue;
+            }
+
+            // warn chain implementation status
+            if matches!(
+                chain_id.implementation_status(),
+                shared_types::ChainImplementationStatus::Planned
+                    | shared_types::ChainImplementationStatus::Partial
+            ) {
+                warn!(
+                    "Chain {} is enabled but has '{}' implementation status. \
+                         This may result in limited functionality.",
+                    chain_id.name(),
+                    chain_id.implementation_status()
+                );
+            }
+
+            // Validate Pinax configuration for enabled chains
+            if let Some(pinax_config) = &chain_config.pinax
+                && pinax_config.db_name.trim().is_empty()
+            {
+                return Err(anyhow!(
+                    "Chain {} has enabled Pinax configuration but empty database name",
+                    chain_id.name()
+                ));
+            }
+
+            // Validate Moralis configuration overrides if present
+            if let Some(moralis_config) = &chain_config.moralis
+                && let Some(base_url) = &moralis_config.base_url
+            {
+                let url = base_url.as_str();
+                ensure!(
+                    url.starts_with("http://") || url.starts_with("https://"),
+                    "Chain {} Moralis base_url must be a valid HTTP(S) URL: {}",
+                    chain_id.name(),
+                    url
+                );
+            }
         }
 
         Ok(())
@@ -779,6 +944,7 @@ impl ServerConfig {
                 enabled: false,
                 requests_per_minute: 0,
             },
+            chains: Self::default_chains(),
             extensions: HashMap::new(),
         }
     }
@@ -832,18 +998,6 @@ mod tests {
         assert_eq!(Environment::Production.to_string(), "production");
         assert_eq!(Environment::Development.to_string(), "development");
         assert_eq!(Environment::Testing.to_string(), "testing");
-    }
-
-    #[test]
-    fn api_base_url_validation() {
-        // Valid URLs should construct successfully
-        assert!(ApiBaseUrl::new("https://api.example.com".to_string()).is_ok());
-        assert!(ApiBaseUrl::new("http://localhost:3000".to_string()).is_ok());
-
-        // Invalid URLs should fail
-        assert!(ApiBaseUrl::new(String::new()).is_err());
-        assert!(ApiBaseUrl::new("ftp://example.com".to_string()).is_err());
-        assert!(ApiBaseUrl::new("https://api.example.com/".to_string()).is_err()); // trailing slash
     }
 
     #[test]

@@ -91,7 +91,7 @@ impl Server {
         // Initialize MoralisClient if enabled
         let moralis_client = if config.external_apis.moralis.enabled {
             let moralis_config = ExternalMoralisConfig {
-                base_url: config.external_apis.moralis.base_url.value().to_string(),
+                base_url: config.external_apis.moralis.base_url.to_string(),
                 api_key: config.external_apis.moralis.api_key.value().to_string(),
                 timeout_seconds: config
                     .external_apis
@@ -115,7 +115,7 @@ impl Server {
         // Initialize PinaxClient if enabled
         let pinax_client = if config.external_apis.pinax.enabled {
             let pinax_config = ExternalPinaxConfig::new(
-                config.external_apis.pinax.endpoint.value(),
+                config.external_apis.pinax.endpoint.as_str(),
                 config.external_apis.pinax.api_user.value(),
                 config.external_apis.pinax.api_auth.value(),
                 &config.external_apis.pinax.db_name,
@@ -153,11 +153,7 @@ impl Server {
 
         // Set base URL if configured
         let openai_config = if let Some(base_url) = &config.spam_predictor.openai_base_url {
-            // Convert ApiBaseUrl to url::Url
-            let url = url::Url::parse(base_url.value()).map_err(|e| ServerError::Config {
-                message: format!("Invalid OpenAI base URL: {e}"),
-            })?;
-            openai_config.with_base_url(url)
+            openai_config.with_base_url(base_url.clone())
         } else {
             openai_config
         };
