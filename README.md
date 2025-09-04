@@ -273,7 +273,7 @@ The NFT API uses a hierarchical configuration system powered by the [`config`](h
 1. **Default Values** - Built-in sensible defaults
 2. **Configuration Files** - Optional JSON files
 3. **Environment-Specific Files** - Environment-based configuration files (`config.development.json`)
-4. **Environment Variables** - Runtime configuration with `SERVER_` prefix
+4. **Environment Variables** - Runtime configuration with `SERVER__` prefix (use double underscores `__` between nested keys; top-level keys like `SERVER_PORT` remain single, e.g., `SERVER_PORT`)
 
 ### Configuration Options
 
@@ -312,46 +312,45 @@ The NFT API uses a hierarchical configuration system powered by the [`config`](h
 
 #### 1. Environment Variables
 
-Set environment variables with the `SERVER_` prefix:
+Set environment variables with the `SERVER__` prefix (double underscores between nested keys). Note: top-level keys (no nesting) remain single, e.g., `SERVER_PORT`.
 
 ```bash
-# Basic server configuration
+# Basic server configuration (top-level keys)
 export SERVER_HOST=0.0.0.0
 export SERVER_PORT=8080
 export SERVER_TIMEOUT_SECONDS=60
 export ENVIRONMENT=production
 
 # External API configuration
-export SERVER_EXTERNAL_APIS_MORALIS_ENABLED=true
-export SERVER_EXTERNAL_APIS_MORALIS_API_KEY=your_moralis_api_key
-export SERVER_EXTERNAL_APIS_PINAX_ENABLED=true
-export SERVER_EXTERNAL_APIS_PINAX_API_USER=your_pinax_username
-export SERVER_EXTERNAL_APIS_PINAX_API_AUTH=your_pinax_auth_token
+export SERVER__EXTERNAL_APIS__MORALIS__ENABLED=true
+export SERVER__EXTERNAL_APIS__MORALIS__API_KEY=your_moralis_api_key
+export SERVER__EXTERNAL_APIS__PINAX__ENABLED=true
+export SERVER__EXTERNAL_APIS__PINAX__API_USER=your_pinax_username
+export SERVER__EXTERNAL_APIS__PINAX__API_AUTH=your_pinax_auth_token
 
-# AI Spam Predictor configuration
-export SERVER_EXTERNAL_APIS_SPAM_PREDICTOR_ENABLED=true
-export SERVER_EXTERNAL_APIS_SPAM_PREDICTOR_OPENAI_API_KEY=sk-your-openai-api-key-here
-export SERVER_EXTERNAL_APIS_SPAM_PREDICTOR_OPENAI_BASE_URL=https://api.openai.com/v1
-export SERVER_EXTERNAL_APIS_SPAM_PREDICTOR_OPENAI_ORGANIZATION_ID=your-org-id
-export SERVER_EXTERNAL_APIS_SPAM_PREDICTOR_TIMEOUT_SECONDS=30
-export SERVER_EXTERNAL_APIS_SPAM_PREDICTOR_MAX_TOKENS=10
-export SERVER_EXTERNAL_APIS_SPAM_PREDICTOR_TEMPERATURE=0.0
+# AI Spam Predictor configuration (top-level `spam_predictor`)
+export SERVER__SPAM_PREDICTOR__OPENAI_API_KEY=sk-your-openai-api-key-here
+export SERVER__SPAM_PREDICTOR__OPENAI_BASE_URL=https://api.openai.com/v1
+export SERVER__SPAM_PREDICTOR__OPENAI_ORGANIZATION_ID=your-org-id
+export SERVER__SPAM_PREDICTOR__TIMEOUT_SECONDS=30
+export SERVER__SPAM_PREDICTOR__MAX_TOKENS=10
+export SERVER__SPAM_PREDICTOR__TEMPERATURE=0.0
 
 # Rate limiting
 export SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE=100
 
 # Chain-specific configuration
-export SERVER_CHAINS_1_ENABLED=true
-export SERVER_CHAINS_1_MORALIS_TIMEOUT_SECONDS=45
-export SERVER_CHAINS_1_PINAX_DB_NAME="mainnet:evm-nft-tokens@v0.6.2"
+export SERVER__CHAINS__1__ENABLED=true
+export SERVER__CHAINS__1__MORALIS__TIMEOUT_SECONDS=45
+export SERVER__CHAINS__1__PINAX__DB_NAME="mainnet:evm-nft-tokens@v0.6.2"
 
-export SERVER_CHAINS_137_ENABLED=true
-export SERVER_CHAINS_137_MORALIS_TIMEOUT_SECONDS=45
-export SERVER_CHAINS_137_PINAX_DB_NAME="matic:evm-nft-tokens@v0.5.1"
+export SERVER__CHAINS__137__ENABLED=true
+export SERVER__CHAINS__137__MORALIS__TIMEOUT_SECONDS=45
+export SERVER__CHAINS__137__PINAX__DB_NAME="matic:evm-nft-tokens@v0.5.1"
 
-export SERVER_CHAINS_8453_ENABLED=true
-export SERVER_CHAINS_8453_MORALIS_TIMEOUT_SECONDS=30
-export SERVER_CHAINS_8453_PINAX_DB_NAME="base:evm-nft-tokens@v0.5.1"
+export SERVER__CHAINS__8453__ENABLED=true
+export SERVER__CHAINS__8453__MORALIS__TIMEOUT_SECONDS=30
+export SERVER__CHAINS__8453__PINAX__DB_NAME="base:evm-nft-tokens@v0.5.1"
 ```
 
 #### 2. Configuration Files
