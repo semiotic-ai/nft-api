@@ -32,17 +32,6 @@ impl MoralisChainFixture {
     pub async fn setup_chain_mocks(mock_server: &MockServer, chain_id: ChainId) {
         let chain_name = Self::moralis_chain_name(chain_id);
 
-        // Successful metadata response
-        Mock::given(method("GET"))
-            .and(path_regex(r"^/nft/0x[a-fA-F0-9]{40}$"))
-            .and(query_param("chain", chain_name))
-            .and(header("X-API-Key", "test-api-key"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(Self::success_response(chain_id)),
-            )
-            .mount(mock_server)
-            .await;
-
         // Empty response (no data found)
         Mock::given(method("GET"))
             .and(path(format!("/nft/{}", Address::from([0xff; 20]))))
@@ -73,6 +62,17 @@ impl MoralisChainFixture {
             .and(path(format!("/nft/{}", Address::from([0xcc; 20]))))
             .and(query_param("chain", chain_name))
             .respond_with(ResponseTemplate::new(500).set_body_string("Internal Server Error"))
+            .mount(mock_server)
+            .await;
+
+        // Successful metadata response - General catch-all must be last
+        Mock::given(method("GET"))
+            .and(path_regex(r"^/nft/0x[a-fA-F0-9]{40}$"))
+            .and(query_param("chain", chain_name))
+            .and(header("X-API-Key", "test-api-key"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(Self::success_response(chain_id)),
+            )
             .mount(mock_server)
             .await;
 

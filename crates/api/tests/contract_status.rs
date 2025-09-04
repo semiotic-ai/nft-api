@@ -324,7 +324,10 @@ async fn contract_status_all_chains_valid_addresses() {
         let response_body: serde_json::Value =
             response.json().await.expect("failed to parse response");
 
-        let result = &response_body[fixture.get_valid_address().to_string()];
+        // Use lowercase address format for lookup since Address serializes to lowercase
+        let address_key = format!("{:#x}", fixture.get_valid_address());
+        let result = &response_body[&address_key];
+
         assert_eq!(
             result["chain_id"],
             fixture.chain_id.chain_id(),
@@ -420,16 +423,17 @@ async fn contract_status_mixed_chains_batch() {
         let response_body: serde_json::Value =
             response.json().await.expect("failed to parse response");
 
-        // Verify both addresses were processed
+        // Verify both addresses were processed (use lowercase format for keys)
+        let valid_address_key = format!("{:#x}", fixture.get_valid_address());
+        let legitimate_address_key = format!("{:#x}", fixture.get_legitimate_address());
+
         assert!(
-            response_body
-                .get(fixture.get_valid_address().to_string())
-                .is_some()
+            response_body.get(&valid_address_key).is_some(),
+            "Response should contain valid address key: {valid_address_key}",
         );
         assert!(
-            response_body
-                .get(fixture.get_legitimate_address().to_string())
-                .is_some()
+            response_body.get(&legitimate_address_key).is_some(),
+            "Response should contain legitimate address key: {legitimate_address_key}",
         );
 
         // Verify chain_id consistency in all responses
