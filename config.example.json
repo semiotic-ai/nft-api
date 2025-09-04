@@ -59,7 +59,7 @@
       }
     },
     "8453": {
-      "enabled": false,
+      "enabled": true,
       "moralis": {
         "timeout_seconds": 30
       },
@@ -68,7 +68,7 @@
       }
     },
     "43114": {
-      "enabled": false,
+      "enabled": true,
       "moralis": {
         "timeout_seconds": 30
       },
@@ -77,7 +77,7 @@
       }
     },
     "42161": {
-      "enabled": false,
+      "enabled": true,
       "moralis": {
         "timeout_seconds": 30
       },

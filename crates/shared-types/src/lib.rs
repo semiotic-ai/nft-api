@@ -9,4 +9,4 @@
 
 pub mod chains;
 
-pub use chains::{ChainId, ChainImplementationStatus};
+pub use chains::{ChainCapability, ChainId, ChainImplementationStatus, ChainStatus};

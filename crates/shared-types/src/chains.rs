@@ -53,9 +53,10 @@ impl ChainId {
     /// Returns the implementation status for this chain
     pub const fn implementation_status(self) -> ChainImplementationStatus {
         match self {
-            Self::Polygon | Self::Ethereum => ChainImplementationStatus::Full,
-            Self::Base => ChainImplementationStatus::Partial,
-            Self::Avalanche | Self::Arbitrum => ChainImplementationStatus::Planned,
+            // All chains have production-ready Pinax Token API support
+            Self::Polygon | Self::Ethereum | Self::Base | Self::Avalanche | Self::Arbitrum => {
+                ChainImplementationStatus::Full
+            }
         }
     }
 
@@ -87,6 +88,52 @@ impl ChainId {
             Self::Avalanche,
             Self::Arbitrum,
         ]
+    }
+
+    /// Returns the current support status for this chain
+    pub const fn support_status(self) -> ChainStatus {
+        match self.implementation_status() {
+            ChainImplementationStatus::Full => ChainStatus::FullySupported,
+            ChainImplementationStatus::Partial => ChainStatus::PartiallySupported,
+            ChainImplementationStatus::Planned => ChainStatus::Planned,
+        }
+    }
+
+    /// Returns the list of capabilities available for this chain
+    pub fn capabilities(self) -> Vec<ChainCapability> {
+        match self {
+            // All chains have both Moralis and Pinax production support
+            Self::Polygon | Self::Ethereum | Self::Base | Self::Avalanche | Self::Arbitrum => {
+                vec![
+                    ChainCapability::MoralisMetadata,
+                    ChainCapability::PinaxAnalytics,
+                    ChainCapability::SpamPrediction,
+                ]
+            }
+        }
+    }
+
+    /// Returns whether this chain supports a specific capability
+    pub fn supports_capability(self, capability: ChainCapability) -> bool {
+        self.capabilities().contains(&capability)
+    }
+
+    /// Returns the limitations for this chain as a descriptive message
+    pub fn limitations(self) -> Vec<&'static str> {
+        match self {
+            // All chains now have full production support from both Moralis and Pinax
+            Self::Polygon | Self::Ethereum | Self::Base | Self::Avalanche | Self::Arbitrum => {
+                vec![]
+            }
+        }
+    }
+
+    /// Returns the estimated availability date for planned features (if applicable)
+    pub fn estimated_availability(self) -> Option<&'static str> {
+        match self {
+            // All chains are now production ready - no estimated dates needed
+            Self::Polygon | Self::Ethereum | Self::Base | Self::Avalanche | Self::Arbitrum => None,
+        }
     }
 }
 
@@ -198,12 +245,60 @@ pub enum ChainImplementationStatus {
     Planned,
 }
 
+/// Chain support status for API responses and validation
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
+pub enum ChainStatus {
+    /// Chain is fully supported with all features available
+    FullySupported,
+    /// Chain is partially supported with some features limited or unavailable
+    PartiallySupported,
+    /// Chain support is planned but not yet available
+    Planned,
+    /// Chain support is deprecated and being phased out
+    Deprecated,
+}
+
+/// Specific capabilities available for blockchain chains
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
+pub enum ChainCapability {
+    /// NFT metadata retrieval via Moralis API
+    MoralisMetadata,
+    /// Blockchain analytics via Pinax database
+    PinaxAnalytics,
+    /// AI-powered spam detection
+    SpamPrediction,
+    /// Real-time updates via WebSocket connections
+    RealTimeUpdates,
+}
+
 impl fmt::Display for ChainImplementationStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Full => write!(f, "Full"),
             Self::Partial => write!(f, "Partial"),
             Self::Planned => write!(f, "Planned"),
+        }
+    }
+}
+
+impl fmt::Display for ChainStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::FullySupported => write!(f, "fully_supported"),
+            Self::PartiallySupported => write!(f, "partially_supported"),
+            Self::Planned => write!(f, "planned"),
+            Self::Deprecated => write!(f, "deprecated"),
+        }
+    }
+}
+
+impl fmt::Display for ChainCapability {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MoralisMetadata => write!(f, "moralis_metadata"),
+            Self::PinaxAnalytics => write!(f, "pinax_analytics"),
+            Self::SpamPrediction => write!(f, "spam_prediction"),
+            Self::RealTimeUpdates => write!(f, "realtime_updates"),
         }
     }
 }
@@ -226,6 +321,80 @@ pub enum ChainIdParseError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn support_status() {
+        // All chains are now fully supported based on Pinax documentation
+        assert_eq!(
+            ChainId::Polygon.support_status(),
+            ChainStatus::FullySupported
+        );
+        assert_eq!(
+            ChainId::Ethereum.support_status(),
+            ChainStatus::FullySupported
+        );
+        assert_eq!(ChainId::Base.support_status(), ChainStatus::FullySupported);
+        assert_eq!(
+            ChainId::Avalanche.support_status(),
+            ChainStatus::FullySupported
+        );
+        assert_eq!(
+            ChainId::Arbitrum.support_status(),
+            ChainStatus::FullySupported
+        );
+    }
+
+    #[test]
+    fn chain_capabilities() {
+        // Test that all chains now have full capabilities
+        for chain in [
+            ChainId::Polygon,
+            ChainId::Ethereum,
+            ChainId::Base,
+            ChainId::Avalanche,
+            ChainId::Arbitrum,
+        ] {
+            let caps = chain.capabilities();
+            assert!(
+                caps.contains(&ChainCapability::MoralisMetadata),
+                "Chain {chain:?} missing Moralis"
+            );
+            assert!(
+                caps.contains(&ChainCapability::PinaxAnalytics),
+                "Chain {chain:?} missing Pinax"
+            );
+            assert!(
+                caps.contains(&ChainCapability::SpamPrediction),
+                "Chain {chain:?} missing Spam"
+            );
+            assert_eq!(caps.len(), 3, "Chain {chain:?} should have 3 capabilities");
+        }
+    }
+
+    #[test]
+    fn supports_capability() {
+        // Test that all chains now support all capabilities
+        for chain in [
+            ChainId::Polygon,
+            ChainId::Ethereum,
+            ChainId::Base,
+            ChainId::Avalanche,
+            ChainId::Arbitrum,
+        ] {
+            assert!(
+                chain.supports_capability(ChainCapability::MoralisMetadata),
+                "Chain {chain:?} should support Moralis"
+            );
+            assert!(
+                chain.supports_capability(ChainCapability::PinaxAnalytics),
+                "Chain {chain:?} should support Pinax"
+            );
+            assert!(
+                chain.supports_capability(ChainCapability::SpamPrediction),
+                "Chain {chain:?} should support Spam"
+            );
+        }
+    }
 
     #[test]
     fn chain_id_numeric_conversion() {
@@ -281,39 +450,6 @@ mod tests {
         assert_eq!(ChainId::try_from(42161).unwrap(), ChainId::Arbitrum);
 
         assert!(ChainId::try_from(999).is_err());
-    }
-
-    #[test]
-    fn implementation_status() {
-        assert_eq!(
-            ChainId::Polygon.implementation_status(),
-            ChainImplementationStatus::Full
-        );
-        assert_eq!(
-            ChainId::Ethereum.implementation_status(),
-            ChainImplementationStatus::Full
-        );
-        assert_eq!(
-            ChainId::Base.implementation_status(),
-            ChainImplementationStatus::Partial
-        );
-        assert_eq!(
-            ChainId::Avalanche.implementation_status(),
-            ChainImplementationStatus::Planned
-        );
-        assert_eq!(
-            ChainId::Arbitrum.implementation_status(),
-            ChainImplementationStatus::Planned
-        );
-    }
-
-    #[test]
-    fn is_fully_implemented() {
-        assert!(ChainId::Polygon.is_fully_implemented());
-        assert!(ChainId::Ethereum.is_fully_implemented());
-        assert!(!ChainId::Base.is_fully_implemented());
-        assert!(!ChainId::Avalanche.is_fully_implemented());
-        assert!(!ChainId::Arbitrum.is_fully_implemented());
     }
 
     #[test]

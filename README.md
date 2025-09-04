@@ -372,6 +372,69 @@ Configuration values are loaded in hierarchical order. For example, if you have:
 
 The final port will be `9000` (environment variable takes highest precedence).
 
+## Blockchain Data Provider Setup
+
+The NFT API requires external blockchain data providers to fetch NFT metadata and analytics. All supported chains now have full production support with both Moralis and Pinax providers available.
+
+### Supported Chains and Requirements
+
+| Chain | Chain ID | Status | Moralis API Key | Pinax Access | Production Ready |
+|-------|----------|--------|-----------------|--------------|------------------|
+| Ethereum | 1 | ✅ Full Support | Required | Required | ✅ |
+| Polygon | 137 | ✅ Full Support | Required | Required | ✅ |
+| Base | 8453 | ✅ Full Support | Required | Required | ✅ |
+| Avalanche | 43114 | ✅ Full Support | Required | Required | ✅ |
+| Arbitrum One | 42161 | ✅ Full Support | Required | Required | ✅ |
+
+### Quick Setup
+
+1. **Get Moralis API Key**:
+   ```bash
+   # Visit https://admin.moralis.io/register
+   # Create a new project and get your API key
+   export SERVER_EXTERNAL_APIS_MORALIS_API_KEY=your-moralis-api-key
+   export SERVER_EXTERNAL_APIS_MORALIS_ENABLED=true
+   ```
+
+2. **Get Pinax Access**:
+   ```bash
+   # Visit https://pinax.network for access
+   # Configure database access credentials
+   export SERVER_EXTERNAL_APIS_PINAX_API_USER=your-username
+   export SERVER_EXTERNAL_APIS_PINAX_API_AUTH=your-auth-token
+   export SERVER_EXTERNAL_APIS_PINAX_ENABLED=true
+   ```
+
+3. **Configure Chain-Specific Settings**:
+   ```bash
+   # All chains are enabled by default in config.example.json
+   # Timeouts are optimized per chain (30-45 seconds)
+   # Database names are pre-configured for each chain
+   ```
+
+### Testing Multi-Chain Support
+
+Test all supported chains with real contract addresses:
+
+```bash
+# Test individual chains
+just local-test-status-ethereum       # Ethereum mainnet
+just local-test-status-polygon        # Polygon
+just local-test-status-base           # Base
+just local-test-status-avalanche      # Avalanche
+just local-test-status-arbitrum       # Arbitrum One
+
+# Test all chains sequentially
+just local-test-status-all-chains
+```
+
+### API Key Security
+
+- **Never commit API keys** to version control
+- Use environment variables for production deployment
+- Rotate keys regularly according to provider recommendations
+- Monitor API usage and rate limits through provider dashboards
+
 ## AI Spam Predictor Setup
 
 The NFT API includes an AI-powered spam prediction system using OpenAI's fine-tuned GPT models. This feature analyzes contract metadata to classify contracts as spam or legitimate.
@@ -495,6 +558,14 @@ just local-test-status                                    # Test contract status
 just local-test-status "0x123..."                       # Test with custom address
 just local-test-status "0x123...,0x456..." "137"        # Test multiple addresses on Polygon
 just local-test-status "0x123..." "42161"               # Test single address on Arbitrum
+
+# Chain-specific testing with real contracts
+just local-test-status-ethereum                          # Test Ethereum mainnet (chain 1)
+just local-test-status-polygon                           # Test Polygon (chain 137)
+just local-test-status-base                              # Test Base (chain 8453)
+just local-test-status-avalanche                         # Test Avalanche (chain 43114)
+just local-test-status-arbitrum                          # Test Arbitrum One (chain 42161)
+just local-test-status-all-chains                        # Test all supported chains sequentially
 ```
 
 **Utilities:**

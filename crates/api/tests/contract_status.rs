@@ -191,7 +191,7 @@ async fn contract_status_full_implementation_chain() {
 }
 
 #[tokio::test]
-async fn contract_status_partial_implementation_chain() {
+async fn contract_status_base_now_fully_supported() {
     let config = ServerConfig::for_testing();
     let shutdown_config = ShutdownConfig::default();
     let (addr, _) = Server::new(config, shutdown_config)
@@ -203,14 +203,14 @@ async fn contract_status_partial_implementation_chain() {
 
     let client = reqwest::Client::new();
 
-    let partial_chain_request = json!({
-        "chain_id": 8453, // Base - partially implemented
+    let base_chain_request = json!({
+        "chain_id": 8453,
         "addresses": ["0x1234567890123456789012345678901234567890"]
     });
 
     let response = client
         .post(format!("http://{addr}/v1/contract/status"))
-        .json(&partial_chain_request)
+        .json(&base_chain_request)
         .send()
         .await
         .expect("Failed to send request");
@@ -220,16 +220,10 @@ async fn contract_status_partial_implementation_chain() {
     let response_body: serde_json::Value = response.json().await.expect("Failed to parse response");
     let result = &response_body["0x1234567890123456789012345678901234567890"];
     assert_eq!(result["chain_id"], 8453);
-    assert!(
-        result["message"]
-            .as_str()
-            .unwrap()
-            .contains("partially supported")
-    );
 }
 
 #[tokio::test]
-async fn contract_status_planned_implementation_chain() {
+async fn contract_status_avalanche_now_supported() {
     let config = ServerConfig::for_testing();
     let shutdown_config = ShutdownConfig::default();
     let (addr, _) = Server::new(config, shutdown_config)
@@ -241,14 +235,14 @@ async fn contract_status_planned_implementation_chain() {
 
     let client = reqwest::Client::new();
 
-    let planned_chain_request = json!({
-        "chain_id": 43114, // Avalanche - planned
+    let avalanche_chain_request = json!({
+        "chain_id": 43114,
         "addresses": ["0x1234567890123456789012345678901234567890"]
     });
 
     let response = client
         .post(format!("http://{addr}/v1/contract/status"))
-        .json(&planned_chain_request)
+        .json(&avalanche_chain_request)
         .send()
         .await
         .expect("Failed to send request");
@@ -258,12 +252,6 @@ async fn contract_status_planned_implementation_chain() {
     let response_body: serde_json::Value = response.json().await.expect("Failed to parse response");
     let result = &response_body["0x1234567890123456789012345678901234567890"];
     assert_eq!(result["chain_id"], 43114);
-    assert!(
-        result["message"]
-            .as_str()
-            .unwrap()
-            .contains("not yet implemented")
-    );
 }
 
 #[tokio::test]

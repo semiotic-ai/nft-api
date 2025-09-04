@@ -172,6 +172,50 @@ local-test-status addresses="0xabcdefabcdefabcdefabcdefabcdefabcdefabcd" chain_i
 local-test-health:
     curl 0:3000/health
 
+# === Chain-Specific Testing Commands ===
+
+# Test Ethereum mainnet with real contracts
+local-test-status-ethereum:
+    just local-test-status "0x2e3a0bbc85119aa0dde4825cec8d474f5b09b721,0x2e3a148e113e381e2b601a0c9914576ffe8d85d4" "1"
+
+# Test Polygon with real contracts
+local-test-status-polygon:
+    just local-test-status "0xaffee4b319ba0f479085e5ea76c89c51aa4e67aa,0xafffaa7ee82c8d6066d7d7ab36c1ee6a1219571a" "137"
+
+# Test Base with real contracts
+local-test-status-base:
+    just local-test-status "0x397823d28b62aa879f517675da859de2a0ec2abe,0x3992f0829292a4da4daacf40a8ead8733ac77cea" "8453"
+
+# Test Avalanche with real contracts
+local-test-status-avalanche:
+    just local-test-status "0x0000000000771a79d0fc7f3b7fe270eb4498f20b,0x000b9a715122a2c91513f38f9322ef47dc97294a" "43114"
+
+# Test Arbitrum with real contracts
+local-test-status-arbitrum:
+    just local-test-status "0x00000000001594c61dd8a6804da9ab58ed2483ce,0x00000000016c35e3613ad3ed484aa48f161b67fd" "42161"
+
+# Test all supported chains sequentially
+local-test-status-all-chains:
+    #!/usr/bin/env bash
+    echo "Testing all supported chains with real contracts..."
+    echo ""
+    echo "🔷 Testing Ethereum (Chain ID: 1)..."
+    just local-test-status-ethereum
+    echo ""
+    echo "🟣 Testing Polygon (Chain ID: 137)..."
+    just local-test-status-polygon
+    echo ""
+    echo "🔵 Testing Base (Chain ID: 8453)..."
+    just local-test-status-base
+    echo ""
+    echo "🔴 Testing Avalanche (Chain ID: 43114)..."
+    just local-test-status-avalanche
+    echo ""
+    echo "🟠 Testing Arbitrum (Chain ID: 42161)..."
+    just local-test-status-arbitrum
+    echo ""
+    echo "✅ Multi-chain testing completed!"
+
 # === Development Helpers ===
 
 # Clean build artifacts
