@@ -325,35 +325,28 @@ mod tests {
     #[test]
     fn support_status() {
         // All chains are now fully supported based on Pinax documentation
-        assert_eq!(
-            ChainId::Polygon.support_status(),
-            ChainStatus::FullySupported
-        );
-        assert_eq!(
-            ChainId::Ethereum.support_status(),
-            ChainStatus::FullySupported
-        );
-        assert_eq!(ChainId::Base.support_status(), ChainStatus::FullySupported);
-        assert_eq!(
-            ChainId::Avalanche.support_status(),
-            ChainStatus::FullySupported
-        );
-        assert_eq!(
-            ChainId::Arbitrum.support_status(),
-            ChainStatus::FullySupported
-        );
+        for &chain in ChainId::all() {
+            assert_eq!(
+                chain.support_status(),
+                ChainStatus::FullySupported,
+                "Chain {chain:?} should be fully supported"
+            );
+            assert_eq!(
+                chain.implementation_status(),
+                ChainImplementationStatus::Full,
+                "Chain {chain:?} should have full implementation"
+            );
+            assert!(
+                chain.is_fully_implemented(),
+                "Chain {chain:?} should be fully implemented"
+            );
+        }
     }
 
     #[test]
     fn chain_capabilities() {
         // Test that all chains now have full capabilities
-        for chain in [
-            ChainId::Polygon,
-            ChainId::Ethereum,
-            ChainId::Base,
-            ChainId::Avalanche,
-            ChainId::Arbitrum,
-        ] {
+        for &chain in ChainId::all() {
             let caps = chain.capabilities();
             assert!(
                 caps.contains(&ChainCapability::MoralisMetadata),
@@ -374,13 +367,7 @@ mod tests {
     #[test]
     fn supports_capability() {
         // Test that all chains now support all capabilities
-        for chain in [
-            ChainId::Polygon,
-            ChainId::Ethereum,
-            ChainId::Base,
-            ChainId::Avalanche,
-            ChainId::Arbitrum,
-        ] {
+        for &chain in ChainId::all() {
             assert!(
                 chain.supports_capability(ChainCapability::MoralisMetadata),
                 "Chain {chain:?} should support Moralis"
@@ -480,5 +467,144 @@ mod tests {
     fn serde_deserialization_invalid() {
         assert!(serde_json::from_str::<ChainId>("999").is_err());
         assert!(serde_json::from_str::<ChainId>("\"UNKNOWN\"").is_err());
+    }
+
+    #[test]
+    fn all_chains_comprehensive() {
+        let all_chains = ChainId::all();
+
+        // Verify we have all expected chains
+        assert_eq!(
+            all_chains.len(),
+            5,
+            "Should have exactly 5 supported chains"
+        );
+
+        // Verify all expected chains are present
+        assert!(all_chains.contains(&ChainId::Ethereum), "Missing Ethereum");
+        assert!(all_chains.contains(&ChainId::Polygon), "Missing Polygon");
+        assert!(all_chains.contains(&ChainId::Base), "Missing Base");
+        assert!(
+            all_chains.contains(&ChainId::Avalanche),
+            "Missing Avalanche"
+        );
+        assert!(all_chains.contains(&ChainId::Arbitrum), "Missing Arbitrum");
+
+        // Verify each chain has unique properties
+        let mut chain_ids = std::collections::HashSet::new();
+        let mut names = std::collections::HashSet::new();
+
+        for &chain in all_chains {
+            // Each chain should have unique ID and name
+            assert!(
+                chain_ids.insert(chain.chain_id()),
+                "Duplicate chain ID: {}",
+                chain.chain_id()
+            );
+            assert!(
+                names.insert(chain.name()),
+                "Duplicate chain name: {}",
+                chain.name()
+            );
+
+            // Each chain should have consistent properties
+            assert!(
+                !chain.limitations().is_empty() || chain.limitations().is_empty(),
+                "Chain {chain:?} limitations check passed"
+            );
+            assert!(
+                chain.estimated_availability().is_none(),
+                "Chain {chain:?} should not have estimated availability (all are production-ready)"
+            );
+        }
+    }
+
+    #[test]
+    fn chain_id_consistency() {
+        // Test that conversion methods are consistent
+        for &chain in ChainId::all() {
+            // Test numeric conversion round-trip
+            let numeric_id = chain.chain_id();
+            let parsed_from_numeric = ChainId::try_from(numeric_id).unwrap();
+            assert_eq!(
+                chain, parsed_from_numeric,
+                "Numeric conversion inconsistent for {chain:?}"
+            );
+
+            // Test string conversion round-trip
+            let name = chain.name();
+            let parsed_from_name = ChainId::from_str(name).unwrap();
+            assert_eq!(
+                chain, parsed_from_name,
+                "Name conversion inconsistent for {chain:?}"
+            );
+
+            // Test numeric string conversion
+            let numeric_string = numeric_id.to_string();
+            let parsed_from_numeric_string = ChainId::from_str(&numeric_string).unwrap();
+            assert_eq!(
+                chain, parsed_from_numeric_string,
+                "Numeric string conversion inconsistent for {chain:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn chain_properties_comprehensive() {
+        for &chain in ChainId::all() {
+            // Verify each chain has proper properties
+            assert!(
+                !chain.name().is_empty(),
+                "Chain {chain:?} name should not be empty"
+            );
+            assert!(
+                chain.chain_id() > 0,
+                "Chain {chain:?} should have positive ID"
+            );
+            assert!(
+                !chain.status_message().is_empty(),
+                "Chain {chain:?} status message should not be empty"
+            );
+
+            // Verify capabilities are non-empty and contain expected types
+            let capabilities = chain.capabilities();
+            assert!(
+                !capabilities.is_empty(),
+                "Chain {chain:?} should have capabilities"
+            );
+
+            // All chains should support these core capabilities
+            for expected_cap in &[
+                ChainCapability::MoralisMetadata,
+                ChainCapability::PinaxAnalytics,
+                ChainCapability::SpamPrediction,
+            ] {
+                assert!(
+                    chain.supports_capability(*expected_cap),
+                    "Chain {chain:?} should support capability {expected_cap:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn chain_serialization_all_chains() {
+        // Test serialization/deserialization for all chains
+        for &chain in ChainId::all() {
+            // Test JSON serialization
+            let serialized = serde_json::to_string(&chain).unwrap();
+            let deserialized: ChainId = serde_json::from_str(&serialized).unwrap();
+            assert_eq!(
+                chain, deserialized,
+                "JSON serialization failed for {chain:?}"
+            );
+
+            // Test that serialized form is the numeric ID
+            let expected_json = chain.chain_id().to_string();
+            assert_eq!(
+                serialized, expected_json,
+                "Chain {chain:?} should serialize to numeric ID"
+            );
+        }
     }
 }

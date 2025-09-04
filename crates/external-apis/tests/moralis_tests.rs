@@ -14,8 +14,11 @@ use serde_json::json;
 use shared_types::ChainId;
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
-    matchers::{header, method, path},
+    matchers::{header, method, path, path_regex, query_param},
 };
+
+mod fixtures;
+use fixtures::*;
 
 const TEST_TIMEOUT_SECONDS: u64 = 10;
 const TEST_HEALTH_CHECK_TIMEOUT_SECONDS: u64 = 5;
@@ -296,4 +299,284 @@ async fn client_name() {
     let client = MoralisClient::new(config).unwrap();
 
     assert_eq!(client.name(), "moralis");
+}
+
+// Multi-chain comprehensive tests
+
+#[tokio::test]
+async fn get_nft_metadata_all_chains() {
+    let mock_server = MockServer::start().await;
+    MoralisChainFixture::setup_all_chains_mocks(&mock_server).await;
+
+    let config = create_test_config(mock_server.uri());
+    let client = MoralisClient::new(config).unwrap();
+
+    // Test each supported chain
+    for &chain in ChainId::all() {
+        let test_addresses = MoralisChainFixture::test_addresses(chain);
+
+        let result = client
+            .get_contract_metadata(test_addresses.valid, chain)
+            .await
+            .unwrap();
+
+        assert!(
+            result.is_some(),
+            "should return metadata for chain {}",
+            chain.name()
+        );
+
+        let metadata = result.unwrap();
+        assert_eq!(metadata.address, test_addresses.valid);
+        assert!(
+            metadata.name.is_some(),
+            "should have name for chain {}",
+            chain.name()
+        );
+        assert!(
+            metadata.symbol.is_some(),
+            "should have symbol for chain {}",
+            chain.name()
+        );
+
+        // Verify contract type matches expected type for this chain
+        let expected_type = ChainTestUtils::expected_contract_type(chain);
+        assert_eq!(
+            metadata.contract_type,
+            Some(expected_type),
+            "contract type should match for chain {}",
+            chain.name()
+        );
+    }
+}
+
+#[tokio::test]
+async fn get_nft_metadata_not_found_all_chains() {
+    let mock_server = MockServer::start().await;
+    MoralisChainFixture::setup_all_chains_mocks(&mock_server).await;
+
+    let config = create_test_config(mock_server.uri());
+    let client = MoralisClient::new(config).unwrap();
+
+    // Test not found scenario for each chain
+    for &chain in ChainId::all() {
+        let test_addresses = MoralisChainFixture::test_addresses(chain);
+
+        let result = client
+            .get_contract_metadata(test_addresses.not_found, chain)
+            .await
+            .unwrap();
+
+        assert!(
+            result.is_none(),
+            "should return None for not found address on chain {}",
+            chain.name()
+        );
+    }
+}
+
+#[tokio::test]
+async fn get_nft_metadata_rate_limited_all_chains() {
+    let mock_server = MockServer::start().await;
+    MoralisChainFixture::setup_all_chains_mocks(&mock_server).await;
+
+    let config = create_test_config(mock_server.uri());
+    let client = MoralisClient::new(config).unwrap();
+
+    // Test rate limiting for each chain
+    for &chain in ChainId::all() {
+        let test_addresses = MoralisChainFixture::test_addresses(chain);
+
+        let result = client
+            .get_contract_metadata(test_addresses.rate_limited, chain)
+            .await;
+
+        assert!(
+            result.is_err(),
+            "should return error for rate limited on chain {}",
+            chain.name()
+        );
+
+        match result.unwrap_err() {
+            ApiError::RateLimitExceeded { .. } => {}
+            other => panic!(
+                "Expected RateLimitExceeded error for chain {}, got: {:?}",
+                chain.name(),
+                other
+            ),
+        }
+    }
+}
+
+#[tokio::test]
+async fn get_nft_metadata_authentication_error_all_chains() {
+    let mock_server = MockServer::start().await;
+
+    // Setup authentication error mocks for all chains
+    for &chain in ChainId::all() {
+        let chain_name = match chain {
+            ChainId::Ethereum => "eth",
+            ChainId::Polygon => "polygon",
+            ChainId::Base => "base",
+            ChainId::Avalanche => "avalanche",
+            ChainId::Arbitrum => "arbitrum",
+        };
+
+        Mock::given(method("GET"))
+            .and(path_regex(r"^/nft/0x[a-fA-F0-9]{40}$"))
+            .and(query_param("chain", chain_name))
+            .and(header("X-API-Key", "invalid-key"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&mock_server)
+            .await;
+    }
+
+    let mut config = create_test_config(mock_server.uri());
+    config.api_key = "invalid-key".to_string();
+    let client = MoralisClient::new(config).unwrap();
+
+    // Test authentication error for each chain
+    for &chain in ChainId::all() {
+        let test_addresses = MoralisChainFixture::test_addresses(chain);
+
+        let result = client
+            .get_contract_metadata(test_addresses.valid, chain)
+            .await;
+
+        assert!(
+            result.is_err(),
+            "should return error for invalid auth on chain {}",
+            chain.name()
+        );
+
+        match result.unwrap_err() {
+            ApiError::Authentication { .. } => {}
+            other => panic!(
+                "Expected Authentication error for chain {}, got: {:?}",
+                chain.name(),
+                other
+            ),
+        }
+    }
+}
+
+#[tokio::test]
+async fn get_nft_metadata_server_error_all_chains() {
+    let mock_server = MockServer::start().await;
+    MoralisChainFixture::setup_all_chains_mocks(&mock_server).await;
+
+    let config = create_test_config(mock_server.uri());
+    let client = MoralisClient::new(config).unwrap();
+
+    // Test server error for each chain
+    for &chain in ChainId::all() {
+        let test_addresses = MoralisChainFixture::test_addresses(chain);
+
+        let result = client
+            .get_contract_metadata(test_addresses.server_error, chain)
+            .await;
+
+        assert!(
+            result.is_err(),
+            "should return error for server error on chain {}",
+            chain.name()
+        );
+
+        match result.unwrap_err() {
+            ApiError::Custom { .. } => {}
+            other => panic!(
+                "Expected Custom error for chain {}, got: {:?}",
+                chain.name(),
+                other
+            ),
+        }
+    }
+}
+
+#[tokio::test]
+async fn chain_specific_response_validation() {
+    let mock_server = MockServer::start().await;
+    MoralisChainFixture::setup_all_chains_mocks(&mock_server).await;
+
+    let config = create_test_config(mock_server.uri());
+    let client = MoralisClient::new(config).unwrap();
+
+    // Test that responses are chain-specific
+    for &chain in ChainId::all() {
+        let test_addresses = MoralisChainFixture::test_addresses(chain);
+
+        let result = client
+            .get_contract_metadata(test_addresses.valid, chain)
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Verify the response contains expected chain-specific data
+        let expected_name_prefix = match chain {
+            ChainId::Ethereum => "CryptoPunks",
+            ChainId::Polygon => "PolygonNFT",
+            ChainId::Base => "BaseArt",
+            ChainId::Avalanche => "SnowNFT",
+            ChainId::Arbitrum => "ArbitrumArt",
+        };
+
+        assert!(
+            result.name.as_ref().unwrap().contains(expected_name_prefix),
+            "response should contain chain-specific name for {}: got {}",
+            chain.name(),
+            result.name.as_ref().unwrap()
+        );
+
+        // Verify the response uses the correct test address
+        assert_eq!(
+            result.address,
+            test_addresses.valid,
+            "response should use correct address for chain {}",
+            chain.name()
+        );
+    }
+}
+
+#[tokio::test]
+async fn moralis_chain_parameter_validation() {
+    let mock_server = MockServer::start().await;
+
+    // Setup mock that expects specific chain parameter
+    Mock::given(method("GET"))
+        .and(path("/nft/0x1212121212121212121212121212121212121212"))
+        .and(query_param("chain", "eth"))
+        .and(header("X-API-Key", "test-api-key"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(MoralisChainFixture::success_response(ChainId::Ethereum)),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let config = create_test_config(mock_server.uri());
+    let client = MoralisClient::new(config).unwrap();
+
+    let test_address = Address::from([0x12; 20]);
+
+    // This should work because we're calling with Ethereum
+    let result = client
+        .get_contract_metadata(test_address, ChainId::Ethereum)
+        .await
+        .unwrap();
+
+    assert!(
+        result.is_some(),
+        "should get result for correct chain parameter"
+    );
+
+    // This should fail because the mock expects "eth" but Polygon sends "polygon"
+    let result = client
+        .get_contract_metadata(test_address, ChainId::Polygon)
+        .await;
+
+    // The request should fail because the chain parameter doesn't match the mock
+    assert!(
+        result.is_err() || result.unwrap().is_none(),
+        "should fail or return None for mismatched chain parameter"
+    );
 }
