@@ -23,7 +23,7 @@ use crate::{
 #[openapi(
     info(
         title = "NFT API Service",
-        description = "A secure blockchain token management API service for NFT spam detection analysis. \n\n**Features:**\n- AI-powered spam classification using fine-tuned GPT models\n- Multi-chain support\n- External blockchain data integration (Moralis, Pinax)\n- Built-in rate limiting\n- Comprehensive health monitoring\n\n**Rate Limiting:**\nAPI endpoints are rate limited.\n\n**API Versioning:**\nThis API uses URL-based versioning. Current version is v1. All contract analysis endpoints are prefixed with `/v1/`.",
+        description = "A secure blockchain token management API service for NFT spam detection analysis with comprehensive multi-chain support.\n\n**Supported Blockchain Networks:**\n- Ethereum Mainnet (Chain ID: 1)\n- Polygon (Chain ID: 137)\n- Base (Chain ID: 8453)\n- Avalanche C-Chain (Chain ID: 43114)\n- Arbitrum One (Chain ID: 42161)\n\n**Features:**\n- AI-powered spam classification using fine-tuned GPT models\n- Multi-chain architecture with chain-specific data sources\n- External blockchain data integration (Moralis API, Pinax Analytics)\n- Chain-specific capability validation and error handling\n- Built-in rate limiting with chain-aware middleware\n- Comprehensive health monitoring with chain status reporting\n- Detailed chain validation with informative error messages\n\n**Chain-Specific Data Sources:**\n- Moralis API: NFT metadata and contract information for all chains\n- Pinax Analytics: Blockchain analytics with chain-specific databases\n- AI Spam Predictor: Chain-agnostic spam classification\n\n**Rate Limiting:**\nAPI endpoints are rate limited with chain-specific tracking.\n\n**API Versioning:**\nThis API uses URL-based versioning. Current version is v1. All contract analysis endpoints are prefixed with `/v1/`.\n\n**Error Handling:**\nAPI provides detailed error responses with chain-specific context and validation messages.",
         version = "0.1.0",
         contact(
             name = "Semiotic Labs",
@@ -53,8 +53,8 @@ use crate::{
         )
     ),
     tags(
-        (name = "health", description = "System health monitoring - Check API service status, external API client health, and internal service availability. Used for monitoring and alerting."),
-        (name = "contracts", description = "Blockchain contract analysis - AI-powered spam detection for NFT contracts using external blockchain data sources. Supports multiple chains with rate limiting.")
+        (name = "health", description = "System health monitoring - Check API service status, external API client health, chain-specific configurations, and internal service availability. Includes comprehensive chain health reporting with capability validation. Used for monitoring, alerting, and chain status verification."),
+        (name = "contracts", description = "Multi-chain blockchain contract analysis - AI-powered spam detection for NFT contracts across Ethereum, Polygon, Base, Avalanche, and Arbitrum networks. Utilizes chain-specific external data sources (Moralis API, Pinax Analytics) with intelligent capability validation and comprehensive error handling. Supports batch analysis and provides detailed chain-specific response messages.")
     )
 )]
 pub struct ApiDoc;

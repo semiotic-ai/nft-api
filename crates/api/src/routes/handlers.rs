@@ -62,15 +62,23 @@ pub async fn health_handler(
     examples(
         json!({
             "chain_id": 1,
-            "addresses": ["0x1234567890abcdef1234567890abcdef12345678"]
+            "addresses": ["0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d"]
         }),
         json!({
             "chain_id": 137,
-            "addresses": ["0x1234567890abcdef1234567890abcdef12345678", "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd", "0x9876543210987654321098765432109876543210"]
+            "addresses": ["0x1234567890abcdef1234567890abcdef12345678", "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"]
+        }),
+        json!({
+            "chain_id": 8453,
+            "addresses": ["0x60e4d786628fea6478f785a6d7e704777c86a7c6"]
+        }),
+        json!({
+            "chain_id": 43114,
+            "addresses": ["0x071126cbec1c5562530ab85fd80dd3e3a42a70b8", "0xa7d7079b0fead91f3e65f86e8915cb59c1a4c664"]
         }),
         json!({
             "chain_id": 42161,
-            "addresses": ["0x071126cbec1c5562530ab85fd80dd3e3a42a70b8"]
+            "addresses": ["0x32400084c286cf3e17e7b677ea9583e60a000324"]
         })
     )
 )]
@@ -108,6 +116,16 @@ impl ContractStatusRequest {
             "message": "contract metadata found on Polygon, AI analysis classified as spam"
         }),
         json!({
+            "chain_id": 8453,
+            "contract_spam_status": false,
+            "message": "contract metadata found on Base, AI analysis classified as legitimate"
+        }),
+        json!({
+            "chain_id": 43114,
+            "contract_spam_status": false,
+            "message": "contract metadata found on Avalanche, AI analysis classified as legitimate"
+        }),
+        json!({
             "chain_id": 42161,
             "contract_spam_status": false,
             "message": "no data found for the contract on Arbitrum"
@@ -116,11 +134,6 @@ impl ContractStatusRequest {
             "chain_id": 1,
             "contract_spam_status": false,
             "message": "unable to retrieve contract data from external services for Ethereum"
-        }),
-        json!({
-            "chain_id": 42161,
-            "contract_spam_status": false,
-            "message": "contract analysis for Arbitrum is not yet implemented"
         })
     )
 )]
@@ -139,7 +152,7 @@ pub struct ContractStatusResult {
 #[schema(
     examples(
         json!({
-            "0x1234567890abcdef1234567890abcdef12345678": {
+            "0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d": {
                 "chain_id": 1,
                 "contract_spam_status": false,
                 "message": "contract metadata found on Ethereum, AI analysis classified as legitimate"
@@ -158,10 +171,29 @@ pub struct ContractStatusResult {
             }
         }),
         json!({
+            "0x60e4d786628fea6478f785a6d7e704777c86a7c6": {
+                "chain_id": 8453,
+                "contract_spam_status": false,
+                "message": "contract metadata found on Base, AI analysis classified as legitimate"
+            }
+        }),
+        json!({
             "0x071126cbec1c5562530ab85fd80dd3e3a42a70b8": {
+                "chain_id": 43114,
+                "contract_spam_status": false,
+                "message": "contract metadata found on Avalanche, AI analysis classified as legitimate"
+            },
+            "0xa7d7079b0fead91f3e65f86e8915cb59c1a4c664": {
+                "chain_id": 43114,
+                "contract_spam_status": false,
+                "message": "no data found for the contract on Avalanche"
+            }
+        }),
+        json!({
+            "0x32400084c286cf3e17e7b677ea9583e60a000324": {
                 "chain_id": 42161,
                 "contract_spam_status": false,
-                "message": "contract analysis for Arbitrum is not yet implemented"
+                "message": "contract metadata found on Arbitrum, AI analysis classified as legitimate"
             }
         })
     )
@@ -191,7 +223,7 @@ pub struct ContractStatusResponse {
     path = "/v1/contract/status",
     tag = "contracts",
     summary = "Analyze contract spam status",
-    description = "Analyzes one or more blockchain contract addresses on a specific chain to determine if they are spam. Uses AI-powered classification with external blockchain data sources.",
+    description = "Analyzes one or more blockchain contract addresses on a specific chain to determine if they are spam. Supports all major blockchain networks including Ethereum (1), Polygon (137), Base (8453), Avalanche (43114), and Arbitrum (42161). Uses AI-powered classification with external blockchain data sources (Moralis API, Pinax Analytics).",
     request_body = ContractStatusRequest,
     responses(
         (status = 200, description = "Contract analysis completed successfully", body = ContractStatusResponse),

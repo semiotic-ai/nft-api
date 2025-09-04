@@ -6,17 +6,17 @@ SPDX-License-Identifier: Apache-2.0
 
 # nft-api
 
-A secure NFT API service built with Rust, designed for blockchain token management with strict security and code quality standards.
+A secure multi-chain NFT API service built with Rust, designed for comprehensive blockchain token management across Ethereum, Polygon, Base, Avalanche, and Arbitrum networks with AI-powered spam detection, strict security and code quality standards.
 
 ## Architecture Overview
 
 This project is organized as a Rust workspace with five main crates:
 
-- **`api`** - Main HTTP server implementation with Axum, configuration management, middleware, and graceful shutdown coordination
-- **`api-client`** - Common client trait and types for external API integrations
-- **`external-apis`** - Blockchain data provider integrations (Moralis, Pinax) with health checks
-- **`shared-types`** - Common blockchain types and chain definitions
-- **`spam-predictor`** - OpenAI-powered contract spam classification with caching
+- **`api`** - Main HTTP server implementation with Axum, multi-chain request validation, configuration management, middleware, and graceful shutdown coordination
+- **`api-client`** - Common client trait and types for external API integrations with chain-specific health checks
+- **`external-apis`** - Multi-chain blockchain data provider integrations (Moralis, Pinax) with chain-specific optimizations and health checks
+- **`shared-types`** - Common blockchain types, comprehensive chain definitions, and multi-chain capability validation
+- **`spam-predictor`** - OpenAI-powered contract spam classification with caching, supporting all chain networks
 
 ## Docker Environment Isolation
 
@@ -29,41 +29,103 @@ This project uses **advanced Docker environment isolation** to prevent developme
 
 **Key Benefits**: No more build failures when switching between environments, automatic cleanup, and safe concurrent development workflows.
 
+## Multi-Chain Support
+
+The NFT API provides comprehensive support for major blockchain networks:
+
+| Chain | Chain ID | Status | Moralis | Pinax | AI Spam Detection |
+|-------|----------|---------|---------|-------|------------------|
+| **Ethereum Mainnet** | `1` | ✅ Full | ✅ | ✅ | ✅ |
+| **Polygon** | `137` | ✅ Full | ✅ | ✅ | ✅ |
+| **Base** | `8453` | ✅ Full | ✅ | ✅ | ✅ |
+| **Avalanche C-Chain** | `43114` | ✅ Full | ✅ | ✅ | ✅ |
+| **Arbitrum One** | `42161` | ✅ Full | ✅ | ✅ | ✅ |
 
 ## API Endpoints
 
 ### Health Check
-- **GET** `/health` - Server health status with external API client health aggregation
+- **GET** `/health` - Server health status with chain-specific external API client health aggregation
 
-### Contract Analysis
-- **POST** `/v1/contract/status` - Analyze contract addresses for spam classification
+### Multi-Chain Contract Analysis
+- **POST** `/v1/contract/status` - Analyze contract addresses for spam classification on specific blockchain networks
 
 ### API Documentation
-- **GET** `/swagger-ui` - Interactive Swagger UI for API exploration
+- **GET** `/swagger-ui` - Interactive Swagger UI for API exploration with multi-chain examples
 - **GET** `/api-doc/openapi.json` - OpenAPI specification in JSON format
 
-#### Contract Status Request
+#### Contract Status Request Format
 ```json
 {
+  "chain_id": 1,
   "addresses": [
-    "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
-    "0x1234567890123456789012345678901234567890"
-  ],
-  "chain": 1
+    "0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d",
+    "0x1234567890abcdef1234567890abcdef12345678"
+  ]
 }
 ```
 
-#### Contract Status Response
+#### Multi-Chain Examples
+
+**Ethereum (Chain ID: 1):**
 ```json
 {
-  "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd": {
-    "contract_spam_status": true,
-    "message": "Contract analysis result"
-  },
-  "0x1234567890123456789012345678901234567890": {
+  "chain_id": 1,
+  "addresses": ["0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d"]
+}
+```
+
+**Polygon (Chain ID: 137):**
+```json
+{
+  "chain_id": 137,
+  "addresses": ["0x1234567890abcdef1234567890abcdef12345678"]
+}
+```
+
+**Base (Chain ID: 8453):**
+```json
+{
+  "chain_id": 8453,
+  "addresses": ["0x60e4d786628fea6478f785a6d7e704777c86a7c6"]
+}
+```
+
+**Avalanche (Chain ID: 43114):**
+```json
+{
+  "chain_id": 43114,
+  "addresses": ["0x071126cbec1c5562530ab85fd80dd3e3a42a70b8"]
+}
+```
+
+**Arbitrum (Chain ID: 42161):**
+```json
+{
+  "chain_id": 42161,
+  "addresses": ["0x32400084c286cf3e17e7b677ea9583e60a000324"]
+}
+```
+
+#### Contract Status Response Format
+```json
+{
+  "0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d": {
+    "chain_id": 1,
     "contract_spam_status": false,
-    "message": "Contract analysis result"
+    "message": "contract metadata found on Ethereum, AI analysis classified as legitimate"
+  },
+  "0x1234567890abcdef1234567890abcdef12345678": {
+    "chain_id": 1,
+    "contract_spam_status": true,
+    "message": "contract metadata found on Ethereum, AI analysis classified as spam"
   }
+}
+```
+
+#### Chain-Specific Error Handling
+```json
+{
+  "error": "unsupported chain: chain 5 (Goerli Testnet) is planned for future implementation"
 }
 ```
 
@@ -104,22 +166,28 @@ Test that the API is working correctly:
 # Test the health endpoint
 just local-test-health
 
-# Test the contract status endpoint
+# Test the contract status endpoint (defaults to Ethereum)
 just local-test-status
 
-# Test with custom contract address
-just local-test-status "0x26D85A13212433Fe6A8381969c2B0dB390a0B0ae"
+# Test with custom contract address on Ethereum
+just local-test-status "0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d" "1"
 
 # Test with multiple addresses on Polygon (chain ID 137)
-just local-test-status "0xabc123...,0xdef456...,0x789abc..." "137"
+just local-test-status "0x1234567890abcdef1234567890abcdef12345678,0xabcdefabcdefabcdefabcdefabcdefabcdefabcd" "137"
 
-# Test with single address on Arbitrum (chain ID 42161)
-just local-test-status "0x071126cbec1c5562530ab85fd80dd3e3a42a70b8" "42161"
+# Test single address on Base (chain ID 8453)
+just local-test-status "0x60e4d786628fea6478f785a6d7e704777c86a7c6" "8453"
+
+# Test Avalanche C-Chain (chain ID 43114)
+just local-test-status "0x071126cbec1c5562530ab85fd80dd3e3a42a70b8" "43114"
+
+# Test Arbitrum One (chain ID 42161)
+just local-test-status "0x32400084c286cf3e17e7b677ea9583e60a000324" "42161"
 ```
 
 Expected responses:
-- **Health**: JSON with server status and API client health
-- **Contract Status**: JSON with contract analysis results
+- **Health**: JSON with server status
+- **Contract Status**: JSON with chain-aware contract analysis results and detailed messages
 
 ### 4. Development Workflow
 
@@ -145,19 +213,12 @@ just docker-dev-down
 just prepare-dev-setup
 ```
 
-2. **Build the project:**
-```bash
-cargo build --release
-# or
-just check
-```
-
-3. **Run with default configuration:**
+2. **Run with default configuration:**
 ```bash
 cargo run
 ```
 
-4. **Run with custom configuration:**
+3. **Run with custom configuration:**
 ```bash
 export SERVER_PORT=8080
 export ENVIRONMENT=development
@@ -242,6 +303,9 @@ The NFT API uses a hierarchical configuration system powered by the [`config`](h
 | `spam_predictor.max_cache_size` | Integer | `10000` | Maximum number of cached predictions |
 | `rate_limiting.enabled` | Boolean | `true` | Enable rate limiting |
 | `rate_limiting.requests_per_minute` | Integer | `60` | Maximum requests per IP per minute |
+| `chains.{chain_id}.enabled` | Boolean | `true` | Enable/disable specific blockchain chain |
+| `chains.{chain_id}.moralis.timeout_seconds` | Integer | `30-45` | Chain-specific Moralis timeout (varies by chain) |
+| `chains.{chain_id}.pinax.db_name` | String | - | Chain-specific Pinax database name |
 | `extensions` | Object | `{}` | Additional configuration parameters |
 
 ### Configuration Methods
@@ -275,6 +339,19 @@ export SERVER_EXTERNAL_APIS_SPAM_PREDICTOR_TEMPERATURE=0.0
 
 # Rate limiting
 export SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE=100
+
+# Chain-specific configuration
+export SERVER_CHAINS_1_ENABLED=true
+export SERVER_CHAINS_1_MORALIS_TIMEOUT_SECONDS=45
+export SERVER_CHAINS_1_PINAX_DB_NAME="mainnet:evm-nft-tokens@v0.6.2"
+
+export SERVER_CHAINS_137_ENABLED=true
+export SERVER_CHAINS_137_MORALIS_TIMEOUT_SECONDS=45
+export SERVER_CHAINS_137_PINAX_DB_NAME="matic:evm-nft-tokens@v0.5.1"
+
+export SERVER_CHAINS_8453_ENABLED=true
+export SERVER_CHAINS_8453_MORALIS_TIMEOUT_SECONDS=30
+export SERVER_CHAINS_8453_PINAX_DB_NAME="base:evm-nft-tokens@v0.5.1"
 ```
 
 #### 2. Configuration Files
@@ -290,44 +367,88 @@ Create configuration files in the project root:
   "environment": "production",
   "external_apis": {
     "moralis": {
-      "enabled": true,
-      "api_key": "your_moralis_api_key",
       "base_url": "https://deep-index.moralis.io/api/v2",
+      "api_key": "your_moralis_api_key",
       "timeout_seconds": 30,
       "health_check_timeout_seconds": 5,
-      "max_retries": 3
+      "max_retries": 3,
+      "enabled": true
     },
     "pinax": {
-      "enabled": true,
+      "endpoint": "https://api.pinax.network/sql",
       "api_user": "your_pinax_username",
       "api_auth": "your_pinax_auth_token",
-      "endpoint": "https://api.pinax.network/sql",
       "db_name": "mainnet:evm-nft-tokens@v0.6.2",
       "timeout_seconds": 30,
       "health_check_timeout_seconds": 5,
-      "max_retries": 3
-    },
-    "spam_predictor": {
-      "enabled": true,
-      "openai_api_key": "sk-your-openai-api-key-here",
-      "openai_base_url": "https://api.openai.com/v1",
-      "openai_organization_id": "your-org-id",
-      "timeout_seconds": 30,
-      "max_tokens": 10,
-      "temperature": 0.0,
-      "model_registry_path": "assets/configs/models.yaml",
-      "prompt_registry_path": "assets/prompts/ft_prompt.json"
+      "max_retries": 3,
+      "enabled": true
     }
+  },
+  "spam_predictor": {
+    "openai_api_key": "sk-your-openai-api-key-here",
+    "openai_base_url": "https://api.openai.com/v1",
+    "openai_organization_id": "your-org-id",
+    "timeout_seconds": 30,
+    "max_tokens": 10,
+    "temperature": 0.0,
+    "model_registry_path": "assets/configs/models.yaml",
+    "prompt_registry_path": "assets/prompts/ft_prompt.json",
+    "cache_ttl_seconds": 3600,
+    "max_cache_size": 10000
   },
   "rate_limiting": {
     "enabled": true,
     "requests_per_minute": 60
   },
-  "extensions": {
-    "log_level": "info",
-    "enable_cors": true,
-    "enable_swagger": true
-  }
+  "chains": {
+    "1": {
+      "enabled": true,
+      "moralis": {
+        "timeout_seconds": 45
+      },
+      "pinax": {
+        "db_name": "mainnet:evm-nft-tokens@v0.6.2"
+      }
+    },
+    "137": {
+      "enabled": true,
+      "moralis": {
+        "timeout_seconds": 45
+      },
+      "pinax": {
+        "db_name": "matic:evm-nft-tokens@v0.5.1"
+      }
+    },
+    "8453": {
+      "enabled": true,
+      "moralis": {
+        "timeout_seconds": 30
+      },
+      "pinax": {
+        "db_name": "base:evm-nft-tokens@v0.5.1"
+      }
+    },
+    "43114": {
+      "enabled": true,
+      "moralis": {
+        "timeout_seconds": 30
+      },
+      "pinax": {
+        "db_name": "avalanche:evm-nft-tokens@v0.5.1"
+      }
+    },
+    "42161": {
+      "enabled": true,
+      "moralis": {
+        "timeout_seconds": 30
+      },
+      "pinax": {
+        "db_name": "arbitrum-one:evm-nft-tokens@v0.5.1"
+      }
+    }
+  },
+  "extensions": {}
 }
 ```
 
@@ -605,17 +726,33 @@ The complete OpenAPI 3.0 specification is available in JSON format:
 
 ### Health Monitoring
 
-The `/health` endpoint provides comprehensive service health information:
+The `/health` endpoint provides comprehensive multi-chain service health information:
 
 ```json
 {
-  "status": "Up",
+  "status": "healthy",
   "version": "0.1.0",
   "environment": "production",
   "timestamp": "2025-01-22T10:30:00Z",
-  "api_clients": {
-    "moralis": "Up",
-    "pinax": "Up"
+  "external_apis": {
+    "moralis": {
+      "status": "healthy",
+      "chains": {
+        "1": {"name": "Ethereum", "status": "operational"},
+        "137": {"name": "Polygon", "status": "operational"},
+        "8453": {"name": "Base", "status": "operational"},
+        "43114": {"name": "Avalanche", "status": "operational"},
+        "42161": {"name": "Arbitrum", "status": "operational"}
+      }
+    },
+    "pinax": {
+      "status": "healthy",
+      "supported_chains": [1, 137, 8453, 43114, 42161]
+    }
+  },
+  "spam_predictor": {
+    "status": "healthy",
+    "model_status": "operational"
   }
 }
 ```
