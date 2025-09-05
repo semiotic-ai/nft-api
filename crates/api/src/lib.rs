@@ -32,6 +32,7 @@ pub mod docs;
 pub mod error;
 pub mod extractors;
 pub mod middleware;
+pub mod metrics;
 pub mod openapi;
 pub mod routes;
 pub mod server;

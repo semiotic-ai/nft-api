@@ -52,6 +52,8 @@ url = "2.5.7"
 utoipa = "5.4.0"
 uuid = "1.18.1"
 wiremock = "0.6.5"
+prometheus = "0.14.0"
+lazy_static = "1.5.0"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

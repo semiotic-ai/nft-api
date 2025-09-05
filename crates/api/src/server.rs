@@ -10,7 +10,7 @@
 
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
-use axum::{Router, http::HeaderName};
+use axum::{Router, http::HeaderName, routing::get};
 use external_apis::{
     ApiRegistry, MoralisClient, MoralisConfig as ExternalMoralisConfig, PerChainMoralisConfig,
     PerChainPinaxConfig, PinaxClient, PinaxConfig as ExternalPinaxConfig,
@@ -31,6 +31,7 @@ use tracing::{error, info, info_span, warn};
 use crate::{
     config::ServerConfig,
     error::{ServerError, ServerResult},
+    metrics::metrics_handler,
     middleware::RateLimiter,
     routes::create_routes,
     state::ServerState,
@@ -313,6 +314,15 @@ impl Server {
             .local_addr()
             .map_err(|source| ServerError::Startup { source })?;
 
+        let metrics_addr = SocketAddr::new(self.config.host, self.config.metrics.port);
+        let metrics_listener =
+            TcpListener::bind(&metrics_addr)
+                .await
+                .map_err(|source| ServerError::Bind {
+                    address: metrics_addr,
+                    source,
+                })?;
+
         info!(
             address = %actual_addr,
             environment = %self.config.environment,
@@ -326,7 +336,28 @@ impl Server {
             Self::shutdown_signal_handler(shutdown_token).await;
         });
 
-        let server_result = axum::serve(
+        // Run metrics server
+        let metrics_cancel = cancellation_token.clone();
+        let metrics_server = tokio::spawn(async move {
+            let metrics_router = Router::new()
+                .route(&self.config.metrics.endpoint_path, get(metrics_handler))
+                .with_state(self.state);
+            if let Err(e) = axum::serve(
+                metrics_listener,
+                metrics_router.into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .with_graceful_shutdown(async move {
+                metrics_cancel.cancelled().await;
+                info!("Prometheus metrics server shut down gracefully");
+            })
+            .await
+            {
+                error!(error = ?e, "Metrics server error during shutdown");
+            }
+        });
+
+        // Run main server
+        let app_server = axum::serve(
             listener,
             self.router
                 .into_make_service_with_connect_info::<SocketAddr>(),
@@ -337,7 +368,9 @@ impl Server {
         })
         .await;
 
-        if let Err(e) = server_result {
+        let _ = metrics_server.await;
+
+        if let Err(e) = app_server {
             error!(error = ?e, "Server error during shutdown");
             Err(ServerError::Shutdown { source: e })
         } else {

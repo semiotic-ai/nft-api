@@ -308,6 +308,15 @@ The NFT API uses a hierarchical configuration system powered by the [`config`](h
 | `chains.{chain_id}.pinax.db_name` | String | - | Chain-specific Pinax database name |
 | `extensions` | Object | `{}` | Additional configuration parameters |
 
+### Prometheus Metrics
+
+The server exposes Prometheus metrics for monitoring on a dedicated HTTP port.
+
+- Endpoint path: configurable via `metrics.endpoint_path` (default: `/metrics`)
+- Listening port: configurable via `metrics.port` (default: `9102`)
+
+
+
 ### Configuration Methods
 
 #### 1. Environment Variables

@@ -255,6 +255,7 @@ pub async fn contract_status_handler(
         .map_err(|msg| ServerError::ValidationError(msg.to_string()))?;
 
     let chain_id = contract_status.chain_id;
+    crate::metrics::inc_requests_by_chain(chain_id);
     let implementation_status = chain_id.implementation_status();
     let api_registry = state.api_registry();
     let mut results = HashMap::new();
