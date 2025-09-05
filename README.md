@@ -220,7 +220,7 @@ cargo run
 
 3. **Run with custom configuration:**
 ```bash
-export SERVER_PORT=8080
+export SERVER__PORT=8080
 export ENVIRONMENT=development
 cargo run
 ```
@@ -273,7 +273,7 @@ The NFT API uses a hierarchical configuration system powered by the [`config`](h
 1. **Default Values** - Built-in sensible defaults
 2. **Configuration Files** - Optional JSON files
 3. **Environment-Specific Files** - Environment-based configuration files (`config.development.json`)
-4. **Environment Variables** - Runtime configuration with `SERVER__` prefix (use double underscores `__` between nested keys; top-level keys like `SERVER_PORT` remain single, e.g., `SERVER_PORT`)
+4. **Environment Variables** - Runtime configuration with `SERVER__` prefix (use double underscores `__` between all keys)
 
 ### Configuration Options
 
@@ -312,13 +312,13 @@ The NFT API uses a hierarchical configuration system powered by the [`config`](h
 
 #### 1. Environment Variables
 
-Set environment variables with the `SERVER__` prefix (double underscores between nested keys). Note: top-level keys (no nesting) remain single, e.g., `SERVER_PORT`.
+Set environment variables with the `SERVER__` prefix (use double underscores `__` between all keys).
 
 ```bash
 # Basic server configuration (top-level keys)
-export SERVER_HOST=0.0.0.0
-export SERVER_PORT=8080
-export SERVER_TIMEOUT_SECONDS=60
+export SERVER__HOST=0.0.0.0
+export SERVER__PORT=8080
+export SERVER__TIMEOUT_SECONDS=60
 export ENVIRONMENT=production
 
 # External API configuration
@@ -337,7 +337,7 @@ export SERVER__SPAM_PREDICTOR__MAX_TOKENS=10
 export SERVER__SPAM_PREDICTOR__TEMPERATURE=0.0
 
 # Rate limiting
-export SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE=100
+export SERVER__RATE_LIMITING__REQUESTS_PER_MINUTE=100
 
 # Chain-specific configuration
 export SERVER__CHAINS__1__ENABLED=true
@@ -488,7 +488,7 @@ Configuration values are loaded in hierarchical order. For example, if you have:
 1. Default port: `3000`
 2. `config.json` port: `8080`
 3. `config.production.json` port: `443`
-4. `SERVER_PORT` environment variable: `9000`
+4. `SERVER__PORT` environment variable: `9000`
 
 The final port will be `9000` (environment variable takes highest precedence).
 
@@ -512,17 +512,17 @@ The NFT API requires external blockchain data providers to fetch NFT metadata an
    ```bash
    # Visit https://admin.moralis.io/register
    # Create a new project and get your API key
-   export SERVER_EXTERNAL_APIS_MORALIS_API_KEY=your-moralis-api-key
-   export SERVER_EXTERNAL_APIS_MORALIS_ENABLED=true
+   export SERVER__EXTERNAL_APIS__MORALIS__API_KEY=your-moralis-api-key
+   export SERVER__EXTERNAL_APIS__MORALIS__ENABLED=true
    ```
 
 2. **Get Pinax Access**:
    ```bash
    # Visit https://pinax.network for access
    # Configure database access credentials
-   export SERVER_EXTERNAL_APIS_PINAX_API_USER=your-username
-   export SERVER_EXTERNAL_APIS_PINAX_API_AUTH=your-auth-token
-   export SERVER_EXTERNAL_APIS_PINAX_ENABLED=true
+   export SERVER__EXTERNAL_APIS__PINAX__API_USER=your-username
+   export SERVER__EXTERNAL_APIS__PINAX__API_AUTH=your-auth-token
+   export SERVER__EXTERNAL_APIS__PINAX__ENABLED=true
    ```
 
 3. **Configure Chain-Specific Settings**:
@@ -574,8 +574,7 @@ The NFT API includes an AI-powered spam prediction system using OpenAI's fine-tu
 
 2. **Enable Spam Predictor**:
    ```bash
-   export SERVER_EXTERNAL_APIS_SPAM_PREDICTOR_ENABLED=true
-   export SERVER_EXTERNAL_APIS_SPAM_PREDICTOR_OPENAI_API_KEY=sk-your-actual-openai-key
+   export SERVER__SPAM_PREDICTOR__OPENAI_API_KEY=sk-your-actual-openai-key
    ```
 
 3. **Create Asset Files** (if not present):
@@ -702,7 +701,7 @@ The API includes interactive Swagger UI documentation available when the server 
 
 - **URL**: `http://localhost:3000/swagger-ui`
 - **Features**: Interactive API exploration, request/response examples, schema documentation
-- **Configuration**: Can be disabled in production by setting `SERVER_EXTENSIONS_ENABLE_SWAGGER=false`
+- **Configuration**: Can be disabled in production by setting `SERVER__EXTENSIONS__ENABLE_SWAGGER=false`
 
 ### OpenAPI Specification
 

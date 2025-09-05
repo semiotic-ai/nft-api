@@ -91,7 +91,7 @@ ENV RUST_LOG=info
 ENV ENVIRONMENT=production
 ENV RUST_BACKTRACE=0
 ENV CONFIG_FILE=/app/config.production.json
-ENV SERVER_HOST=0.0.0.0
+ENV SERVER__HOST=0.0.0.0
 # Security: Disable core dumps and limit resources
 ENV RLIMIT_CORE=0
 # Performance: Set optimal thread count (will be overridden by actual CPU count)

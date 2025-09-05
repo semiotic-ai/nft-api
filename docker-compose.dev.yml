@@ -37,7 +37,7 @@ services:
       - RUST_LIB_BACKTRACE=1
       - TOKIO_CONSOLE=1
       # Bind to all interfaces to allow external connections
-      - SERVER_HOST=0.0.0.0
+      - SERVER__HOST=0.0.0.0
     stdin_open: true
     tty: true
     # Add health check for development

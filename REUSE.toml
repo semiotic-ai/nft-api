@@ -13,6 +13,7 @@ path = [
     "CLAUDE.md",
     "deny.toml",
     "rustfmt.toml",
+    "rust-toolchain.toml",
     "clippy.toml",
     "justfile",
     "docker-compose*.yml",
