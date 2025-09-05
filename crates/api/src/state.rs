@@ -87,7 +87,7 @@ impl ServerState {
         Ok(HealthCheck {
             status: HealthStatus::Up,
             version: Box::from(env!("CARGO_PKG_VERSION")),
-            environment: Environment::Development,
+            environment: self.config.environment,
             timestamp: chrono::Utc::now().to_rfc3339(),
             api_clients,
         })

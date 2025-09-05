@@ -10,7 +10,7 @@
 
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
-use axum::{Router, http::HeaderName};
+use axum::{Router, http::HeaderName, routing::get};
 use external_apis::{
     ApiRegistry, MoralisClient, MoralisConfig as ExternalMoralisConfig, PerChainMoralisConfig,
     PerChainPinaxConfig, PinaxClient, PinaxConfig as ExternalPinaxConfig,
@@ -31,6 +31,7 @@ use tracing::{error, info, info_span, warn};
 use crate::{
     config::ServerConfig,
     error::{ServerError, ServerResult},
+    metrics::metrics_handler,
     middleware::RateLimiter,
     routes::create_routes,
     state::ServerState,
@@ -313,6 +314,17 @@ impl Server {
             .local_addr()
             .map_err(|source| ServerError::Startup { source })?;
 
+        let metrics_addr = SocketAddr::new(self.config.host, self.config.metrics.port);
+        let metrics_listener =
+            TcpListener::bind(&metrics_addr)
+                .await
+                .map_err(|source| ServerError::Bind {
+                    address: metrics_addr,
+                    source,
+                })?;
+        let metrics_router =
+            Router::new().route(&self.config.metrics.endpoint_path, get(metrics_handler));
+
         info!(
             address = %actual_addr,
             environment = %self.config.environment,
@@ -326,23 +338,41 @@ impl Server {
             Self::shutdown_signal_handler(shutdown_token).await;
         });
 
-        let server_result = axum::serve(
-            listener,
-            self.router
-                .into_make_service_with_connect_info::<SocketAddr>(),
-        )
-        .with_graceful_shutdown(async move {
-            cancellation_token.cancelled().await;
-            info!("NFT API server shut down gracefully");
-        })
-        .await;
+        let app_service = self
+            .router
+            .into_make_service_with_connect_info::<SocketAddr>();
+        let metrics_service = metrics_router.into_make_service_with_connect_info::<SocketAddr>();
+        let metrics_cancel = cancellation_token.clone();
 
-        if let Err(e) = server_result {
-            error!(error = ?e, "Server error during shutdown");
-            Err(ServerError::Shutdown { source: e })
-        } else {
-            Ok(())
+        let (app_result, metrics_result) = tokio::join!(
+            async {
+                axum::serve(listener, app_service)
+                    .with_graceful_shutdown(async move {
+                        cancellation_token.cancelled().await;
+                        info!("NFT API server shut down gracefully");
+                    })
+                    .await
+            },
+            async {
+                axum::serve(metrics_listener, metrics_service)
+                    .with_graceful_shutdown(async move {
+                        metrics_cancel.cancelled().await;
+                        info!("Prometheus metrics server shut down gracefully");
+                    })
+                    .await
+            }
+        );
+
+        if let Err(e) = app_result {
+            error!(error = ?e, "Main API server error");
+            return Err(ServerError::Shutdown { source: e });
         }
+        if let Err(e) = metrics_result {
+            error!(error = ?e, "Metrics server error");
+            return Err(ServerError::Shutdown { source: e });
+        }
+
+        Ok(())
     }
 
     /// Handle shutdown signals and trigger coordinated cancellation
