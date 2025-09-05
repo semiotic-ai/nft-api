@@ -462,22 +462,22 @@ Create environment-specific configuration files that are loaded based on the `EN
 Example `config.development.json` with disabled external APIs:
 ```json
 {
-"host": "127.0.0.1",
-"port": 3000,
-"external_apis": {
-"moralis": {
-"enabled": false
-},
-"pinax": {
-"enabled": false
-}
-},
-"rate_limiting": {
-"enabled": false
-},
-"extensions": {
-"log_level": "debug"
-}
+  "host": "127.0.0.1",
+  "port": 3000,
+  "external_apis": {
+    "moralis": {
+      "enabled": false
+    },
+    "pinax": {
+      "enabled": false
+    }
+  },
+  "rate_limiting": {
+    "enabled": false
+  },
+  "extensions": {
+    "log_level": "debug"
+  }
 }
 ```
 
