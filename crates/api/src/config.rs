@@ -392,16 +392,16 @@ pub enum Environment {
 /// ## Required Environment Variables for Production
 ///
 /// To enable external APIs in production, set these environment variables:
-/// - `SERVER_EXTERNAL_APIS_MORALIS_API_KEY`: Your Moralis API key
-/// - `SERVER_EXTERNAL_APIS_MORALIS_ENABLED`: Set to "true" to enable
-/// - `SERVER_EXTERNAL_APIS_MORALIS_HEALTH_CHECK_TIMEOUT_SECONDS`: Health check timeout (default: 5)
-/// - `SERVER_EXTERNAL_APIS_PINAX_API_USER`: Your Pinax username
-/// - `SERVER_EXTERNAL_APIS_PINAX_API_AUTH`: Your Pinax auth token
-/// - `SERVER_EXTERNAL_APIS_PINAX_ENABLED`: Set to "true" to enable
-/// - `SERVER_EXTERNAL_APIS_PINAX_HEALTH_CHECK_TIMEOUT_SECONDS`: Health check timeout (default: 5)
-/// - `SERVER_SPAM_PREDICTOR_OPENAI_API_KEY`: Your `OpenAI` API key for spam prediction (required)
-/// - `SERVER_RATE_LIMITING_ENABLED`: Enable rate limiting (default: true)
-/// - `SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE`: Requests per minute limit (default: 60)
+/// - `SERVER__EXTERNAL_APIS__MORALIS__API_KEY`: Your Moralis API key
+/// - `SERVER__EXTERNAL_APIS__MORALIS__ENABLED`: Set to "true" to enable
+/// - `SERVER__EXTERNAL_APIS__MORALIS__HEALTH_CHECK_TIMEOUT_SECONDS`: Health check timeout (default: 5)
+/// - `SERVER__EXTERNAL_APIS__PINAX__API_USER`: Your Pinax username
+/// - `SERVER__EXTERNAL_APIS__PINAX__API_AUTH`: Your Pinax auth token
+/// - `SERVER__EXTERNAL_APIS__PINAX__ENABLED`: Set to "true" to enable
+/// - `SERVER__EXTERNAL_APIS__PINAX__HEALTH_CHECK_TIMEOUT_SECONDS`: Health check timeout (default: 5)
+/// - `SERVER__SPAM_PREDICTOR__OPENAI_API_KEY`: Your `OpenAI` API key for spam prediction (required)
+/// - `SERVER__RATE_LIMITING__ENABLED`: Enable rate limiting (default: true)
+/// - `SERVER__RATE_LIMITING__REQUESTS_PER_MINUTE`: Requests per minute limit (default: 60)
 ///
 /// External APIs with placeholder credentials are automatically disabled by default for security.
 /// Spam predictor is always required and must have valid configuration.
@@ -897,10 +897,10 @@ impl ServerConfig {
             .add_source(
                 File::with_name(&format!("config.{}.json", env_var.to_lowercase())).required(false),
             )
-            // Add environment variables with SERVER_ prefix
+            // Add environment variables with SERVER__ prefix
             .add_source(
                 ConfigEnv::with_prefix("SERVER")
-                    .separator("_")
+                    .separator("__")
                     .try_parsing(true),
             );
 
