@@ -330,6 +330,10 @@ export SERVER_PORT=8080
 export SERVER_TIMEOUT_SECONDS=60
 export ENVIRONMENT=production
 
+# Metrics configuration
+export SERVER__METRICS__ENDPOINT_PATH=/metrics
+export SERVER__METRICS__PORT=9102
+
 # External API configuration
 export SERVER__EXTERNAL_APIS__MORALIS__ENABLED=true
 export SERVER__EXTERNAL_APIS__MORALIS__API_KEY=your_moralis_api_key
