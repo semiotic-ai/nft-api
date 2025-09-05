@@ -10,21 +10,10 @@
 use axum::http::{StatusCode, header};
 use axum::response::Response;
 use lazy_static::lazy_static;
-use prometheus::{
-    Encoder, Gauge, IntCounterVec, TextEncoder, register_gauge, register_int_counter_vec,
-};
+use prometheus::{Encoder, IntCounterVec, TextEncoder, register_int_counter_vec};
 use shared_types::ChainId;
-use std::time::SystemTime;
 
 lazy_static! {
-    /// Process start time captured at first load.
-    pub static ref PROCESS_START_TIME: SystemTime = SystemTime::now();
-    /// Uptime in seconds since process start; updated on metrics scrape.
-    pub static ref PROCESS_UPTIME_SECONDS: Gauge = register_gauge!(
-        "process_uptime_seconds",
-        "Time since the server started in seconds"
-    )
-    .expect("Failed to create process_uptime_seconds gauge");
     /// Total number of API requests received, labeled by `chain_id`.
     pub static ref REQUESTS_BY_CHAIN: IntCounterVec = register_int_counter_vec!(
         "nft_api_requests_total",
@@ -43,9 +32,6 @@ pub fn inc_requests_by_chain(chain_id: ChainId) {
 
 /// Axum handler that exports metrics in Prometheus text format
 pub async fn metrics_handler() -> Response<String> {
-    if let Ok(duration) = PROCESS_START_TIME.elapsed() {
-        PROCESS_UPTIME_SECONDS.set(duration.as_secs_f64());
-    }
     let encoder = TextEncoder::new();
     let metric_families = prometheus::gather();
     let mut buffer = vec![];
