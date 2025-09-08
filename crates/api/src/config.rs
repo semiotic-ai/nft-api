@@ -31,6 +31,8 @@ const TESTING_TIMEOUT_SECONDS: u64 = 5;
 const MAX_TIMEOUT_SECONDS: u64 = 300;
 const DEFAULT_HEALTH_CHECK_TIMEOUT_SECONDS: u64 = 5;
 const DEFAULT_RATE_LIMIT_REQUESTS_PER_MINUTE: u32 = 60;
+const DEFAULT_METRICS_ENDPOINT_PATH: &str = "/metrics";
+const DEFAULT_METRICS_PORT: u16 = 9102;
 const DEFAULT_MAX_RETRIES: u32 = 3;
 
 /// A validated server port that ensures the value is appropriate for the environment
@@ -422,6 +424,8 @@ pub struct ServerConfig {
     pub spam_predictor: SpamPredictorConfig,
     /// Rate limiting configuration
     pub rate_limiting: RateLimitingConfig,
+    /// Prometheus metrics configuration
+    pub metrics: MetricsConfig,
     /// Chain-specific configurations
     #[serde_as(as = "HashMap<DisplayFromStr, _>")]
     pub chains: HashMap<ChainId, ChainConfig>,
@@ -439,8 +443,27 @@ impl Default for ServerConfig {
             external_apis: ExternalApiConfig::default(),
             spam_predictor: SpamPredictorConfig::default(),
             rate_limiting: RateLimitingConfig::default(),
+            metrics: MetricsConfig::default(),
             chains: Self::default_chains(),
             extensions: HashMap::new(),
+        }
+    }
+}
+
+/// Prometheus metrics configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetricsConfig {
+    /// HTTP path for metrics exposition (e.g. "/metrics")
+    pub endpoint_path: String,
+    /// Port for the metrics HTTP server (default 9102)
+    pub port: u16,
+}
+
+impl Default for MetricsConfig {
+    fn default() -> Self {
+        Self {
+            endpoint_path: DEFAULT_METRICS_ENDPOINT_PATH.to_string(),
+            port: DEFAULT_METRICS_PORT,
         }
     }
 }
@@ -891,6 +914,9 @@ impl ServerConfig {
                 "rate_limiting.requests_per_minute",
                 DEFAULT_RATE_LIMIT_REQUESTS_PER_MINUTE,
             )?
+            // Metrics defaults
+            .set_default("metrics.endpoint_path", DEFAULT_METRICS_ENDPOINT_PATH)?
+            .set_default("metrics.port", DEFAULT_METRICS_PORT as i64)?
             // Add optional configuration files
             .add_source(File::with_name("config.json").required(false))
             // Add environment-specific config file
@@ -944,6 +970,7 @@ impl ServerConfig {
                 enabled: false,
                 requests_per_minute: 0,
             },
+            metrics: MetricsConfig::default(),
             chains: Self::default_chains(),
             extensions: HashMap::new(),
         }
