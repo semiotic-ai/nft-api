@@ -455,13 +455,16 @@ async fn perform_spam_analysis(
     let result = match spam_predictor.predict_spam_typed(request).await {
         Ok(prediction_result) => {
             let is_spam = prediction_result.classification().is_spam();
-            let duration = start_time.elapsed().as_millis();
-            crate::metrics::observe_spam_predictor_duration("success", duration as f64 / 1000.0);
+            let duration = start_time.elapsed().as_secs_f64();
+            #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+            let duration_ms = (duration * 1000.0) as u128;
+
+            crate::metrics::observe_spam_predictor_duration("success", duration);
 
             if is_spam {
                 info!(
                     contract_address = %contract_address,
-                    duration_ms = duration,
+                    ?duration_ms,
                     "ai analysis classified contract as spam"
                 );
                 SpamAnalysisResult {
@@ -471,7 +474,7 @@ async fn perform_spam_analysis(
             } else {
                 info!(
                     contract_address = %contract_address,
-                    duration_ms = duration,
+                    ?duration_ms,
                     "ai analysis classified contract as legitimate"
                 );
                 SpamAnalysisResult {
@@ -481,16 +484,16 @@ async fn perform_spam_analysis(
             }
         }
         Err(e) => {
+            let duration = start_time.elapsed().as_secs_f64();
+            #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+            let duration_ms = (duration * 1000.0) as u128;
             warn!(
                 contract_address = %contract_address,
-                duration_ms = start_time.elapsed().as_millis(),
+                ?duration_ms,
                 error = %e,
                 "spam prediction failed"
             );
-            crate::metrics::observe_spam_predictor_duration(
-                "error",
-                start_time.elapsed().as_secs_f64(),
-            );
+            crate::metrics::observe_spam_predictor_duration("error", duration);
             SpamAnalysisResult {
                 is_spam: false,
                 message: "spam prediction unavailable, defaulting to not spam",

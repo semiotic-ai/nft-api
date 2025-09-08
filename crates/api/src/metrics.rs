@@ -7,47 +7,49 @@
 //! Provides global metrics using the default Prometheus registry via macros and
 //! an Axum-compatible metrics handler.
 
-use axum::http::{StatusCode, header};
-use axum::response::Response;
-use lazy_static::lazy_static;
+use std::sync::LazyLock;
+
+use axum::{
+    http::{StatusCode, header},
+    response::Response,
+};
 use prometheus::{
     Encoder, HistogramVec, IntCounterVec, TextEncoder, register_histogram_vec,
     register_int_counter_vec,
 };
 use shared_types::ChainId;
 
-lazy_static! {
-    /// Total number of API requests received, labeled by `chain_id`.
-    pub static ref REQUESTS_BY_CHAIN: IntCounterVec = register_int_counter_vec!(
+/// Total number of API requests received, labeled by `chain_id`.
+pub static REQUESTS_BY_CHAIN: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    register_int_counter_vec!(
         "nft_api_requests_total",
         "Total number of API requests, labeled by chain_id",
         &["chain_id"]
     )
-    .expect("Failed to create nft_api_requests_total counter vec");
+    .expect("Failed to create nft_api_requests_total counter vec")
+});
 
-    /// Histogram for external API request durations in seconds.
-    pub static ref METADATA_API_REQUEST_DURATION: HistogramVec = register_histogram_vec!(
+/// Histogram for external API request durations in seconds.
+pub static METADATA_API_REQUEST_DURATION: LazyLock<HistogramVec> = LazyLock::new(|| {
+    register_histogram_vec!(
         "nft_api_metadata_api_request_duration",
         "Metadata API request durations in seconds",
         &["api_name", "result"],
-        vec![
-            0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0
-        ]
+        vec![0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0]
     )
-    .expect("Failed to create metadata API request duration histogram");
+    .expect("Failed to create metadata API request duration histogram")
+});
 
-
-    /// Histogram for spam predictor request durations in seconds.
-    pub static ref SPAM_PREDICTOR_REQUEST_DURATION: HistogramVec = register_histogram_vec!(
+/// Histogram for spam predictor request durations in seconds.
+pub static SPAM_PREDICTOR_REQUEST_DURATION: LazyLock<HistogramVec> = LazyLock::new(|| {
+    register_histogram_vec!(
         "nft_api_spam_predictor_request_duration",
         "Spam predictor request durations in seconds",
         &["result"],
-        vec![
-            0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0
-        ]
+        vec![0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0]
     )
-    .expect("Failed to create spam predictor request duration histogram");
-}
+    .expect("Failed to create spam predictor request duration histogram")
+});
 
 /// Increment the requests counter with `chain_id` label
 ///
@@ -83,6 +85,13 @@ pub fn observe_spam_predictor_duration(result: &str, duration_secs: f64) {
 }
 
 /// Axum handler that exports metrics in Prometheus text format
+///
+/// # Panics
+///
+/// This function will panic if:
+/// - The metrics encoder fails to encode the metrics data
+/// - The UTF-8 conversion of the encoded buffer fails
+/// - The HTTP response builder fails to create the response
 pub async fn metrics_handler() -> Response<String> {
     let encoder = TextEncoder::new();
     let metric_families = prometheus::gather();
@@ -94,6 +103,6 @@ pub async fn metrics_handler() -> Response<String> {
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, encoder.format_type())
-        .body(String::from_utf8(buffer).unwrap())
+        .body(String::from_utf8(buffer).expect("metrics buffer should be valid UTF-8"))
         .expect("Failed to create metrics response")
 }

@@ -916,7 +916,7 @@ impl ServerConfig {
             )?
             // Metrics defaults
             .set_default("metrics.endpoint_path", DEFAULT_METRICS_ENDPOINT_PATH)?
-            .set_default("metrics.port", DEFAULT_METRICS_PORT as i64)?
+            .set_default("metrics.port", i64::from(DEFAULT_METRICS_PORT))?
             // Add optional configuration files
             .add_source(File::with_name("config.json").required(false))
             // Add environment-specific config file
