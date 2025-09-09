@@ -16,13 +16,11 @@ keywords = ["nft", "spam", "ai", "prediction", "openai"]
 categories = ["web-programming", "api-bindings"]
 
 [dependencies]
-# Workspace dependencies
 alloy-primitives = { workspace = true }
 anyhow = { workspace = true }
 api-client = { workspace = true }
+shared-types = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
-
-# Crate-specific dependencies
 dashmap = { workspace = true }
 regex = { workspace = true }
 reqwest = { workspace = true, features = ["json", "rustls-tls"] }

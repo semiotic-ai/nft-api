@@ -294,8 +294,11 @@ impl ChainTestFixture {
         json!({
             self.get_valid_address().to_string(): {
                 "chain_id": self.chain_id.chain_id(),
-                "contract_spam_status": false,
-                "message": format!("contract metadata found on {}, AI analysis classified as legitimate", self.chain_id.name())
+                "status": "legitimate",
+                "message": format!("contract metadata found on {}, AI analysis classified as legitimate", self.chain_id.name()),
+                "reasoning": "AI analysis classified as legitimate",
+                "processing_time_ms": 150,
+                "cached": false
             }
         })
     }
@@ -305,8 +308,11 @@ impl ChainTestFixture {
         json!({
             self.get_spam_address().to_string(): {
                 "chain_id": self.chain_id.chain_id(),
-                "contract_spam_status": true,
-                "message": format!("contract metadata found on {}, AI analysis classified as spam", self.chain_id.name())
+                "status": "spam",
+                "message": format!("contract metadata found on {}, AI analysis classified as spam", self.chain_id.name()),
+                "reasoning": "exhibits known scam patterns",
+                "processing_time_ms": 200,
+                "cached": false
             }
         })
     }
@@ -316,8 +322,11 @@ impl ChainTestFixture {
         json!({
             self.get_valid_address().to_string(): {
                 "chain_id": self.chain_id.chain_id(),
-                "contract_spam_status": false,
-                "message": format!("no data found for the contract on {}", self.chain_id.name())
+                "status": "no_data",
+                "message": format!("no data found for the contract on {}", self.chain_id.name()),
+                "reasoning": null,
+                "processing_time_ms": null,
+                "cached": false
             }
         })
     }

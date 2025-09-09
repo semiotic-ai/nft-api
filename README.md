@@ -111,13 +111,19 @@ The NFT API provides comprehensive support for major blockchain networks:
 {
   "0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d": {
     "chain_id": 1,
-    "contract_spam_status": false,
-    "message": "contract metadata found on Ethereum, AI analysis classified as legitimate"
+    "status": "legitimate",
+    "message": "contract metadata found on Ethereum, AI analysis classified as legitimate",
+    "reasoning": "AI analysis classified as legitimate",
+    "processing_time_ms": 150,
+    "cached": false
   },
   "0x1234567890abcdef1234567890abcdef12345678": {
     "chain_id": 1,
-    "contract_spam_status": true,
-    "message": "contract metadata found on Ethereum, AI analysis classified as spam"
+    "status": "spam",
+    "message": "contract metadata found on Ethereum, AI analysis classified as spam",
+    "reasoning": "exhibits known scam patterns",
+    "processing_time_ms": 221,
+    "cached": false
   }
 }
 ```

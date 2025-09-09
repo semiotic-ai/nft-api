@@ -13,6 +13,7 @@ use api_client::ContractMetadata;
 use regex::Regex;
 use semver::Version;
 use serde::{Deserialize, Serialize};
+use shared_types::ContractSpamStatus;
 
 use crate::error::{SpamPredictorError, SpamPredictorResult};
 
@@ -272,6 +273,16 @@ impl SpamClassification {
             SpamClassification::Inconclusive => {
                 "AI analysis was inconclusive, defaulting to not spam"
             }
+        }
+    }
+}
+
+impl From<&SpamClassification> for ContractSpamStatus {
+    fn from(value: &SpamClassification) -> Self {
+        match value {
+            SpamClassification::Spam => ContractSpamStatus::Spam,
+            SpamClassification::Legitimate => ContractSpamStatus::Legitimate,
+            SpamClassification::Inconclusive => ContractSpamStatus::Inconclusive,
         }
     }
 }

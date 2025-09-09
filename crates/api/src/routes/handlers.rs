@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use alloy_primitives::Address;
 use axum::{Json, extract::State, response::IntoResponse};
 use serde::{Deserialize, Serialize};
-use shared_types::{ChainId, ChainImplementationStatus};
+use shared_types::{ChainId, ChainImplementationStatus, ContractSpamStatus};
 use tracing::{debug, error, info, instrument, warn};
 use utoipa::ToSchema;
 
@@ -26,10 +26,16 @@ use crate::{
 /// Result of spam analysis operation
 #[derive(Debug, Clone)]
 struct SpamAnalysisResult {
-    /// Whether the contract is classified as spam
-    is_spam: bool,
+    /// Spam classification status
+    status: ContractSpamStatus,
     /// Human-readable analysis message
-    message: &'static str,
+    message: String,
+    /// Optional reasoning from AI analysis
+    reasoning: Option<String>,
+    /// Processing time for analysis in milliseconds
+    processing_time_ms: Option<u64>,
+    /// Whether result was cached
+    cached: bool,
 }
 
 /// Health check endpoint handler
@@ -102,98 +108,145 @@ impl ContractStatusRequest {
 }
 
 /// Individual contract analysis result
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[schema(
     examples(
         json!({
             "chain_id": 1,
-            "contract_spam_status": false,
-            "message": "contract metadata found on Ethereum, AI analysis classified as legitimate"
+            "status": "legitimate",
+            "message": "contract metadata found on Ethereum, AI analysis classified as legitimate",
+            "reasoning": "AI analysis classified as legitimate",
+            "processing_time_ms": 150,
+            "cached": false
         }),
         json!({
             "chain_id": 137,
-            "contract_spam_status": true,
-            "message": "contract metadata found on Polygon, AI analysis classified as spam"
+            "status": "spam",
+            "message": "contract metadata found on Polygon, AI analysis classified as spam",
+            "reasoning": "exhibits known scam patterns",
+            "processing_time_ms": 221,
+            "cached": false
         }),
         json!({
             "chain_id": 8453,
-            "contract_spam_status": false,
-            "message": "contract metadata found on Base, AI analysis classified as legitimate"
+            "status": "legitimate",
+            "message": "contract metadata found on Base, AI analysis classified as legitimate",
+            "reasoning": null,
+            "processing_time_ms": 181,
+            "cached": true
         }),
         json!({
             "chain_id": 43114,
-            "contract_spam_status": false,
-            "message": "contract metadata found on Avalanche, AI analysis classified as legitimate"
+            "status": "inconclusive",
+            "message": "contract metadata found on Avalanche, AI analysis was inconclusive, defaulting to not spam",
+            "reasoning": "insufficient data for reliable classification",
+            "processing_time_ms": 96,
+            "cached": false
         }),
         json!({
             "chain_id": 42161,
-            "contract_spam_status": false,
-            "message": "no data found for the contract on Arbitrum"
+            "status": "no_data",
+            "message": "no data found for the contract on Arbitrum",
+            "reasoning": null,
+            "processing_time_ms": null,
+            "cached": false
         }),
         json!({
             "chain_id": 1,
-            "contract_spam_status": false,
-            "message": "unable to retrieve contract data from external services for Ethereum"
+            "status": "error",
+            "message": "unable to retrieve contract data from external services for Ethereum",
+            "reasoning": "External API error: timeout",
+            "processing_time_ms": null,
+            "cached": false
         })
     )
 )]
 pub struct ContractStatusResult {
     /// Blockchain chain identifier
     pub chain_id: ChainId,
-    /// Whether the contract is identified as spam
-    pub contract_spam_status: bool,
+    /// Contract spam classification status
+    pub status: ContractSpamStatus,
     /// Human-readable message explaining the classification result
     pub message: String,
+    /// Optional reasoning from AI analysis
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<String>,
+    /// Processing time for analysis in milliseconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub processing_time_ms: Option<u64>,
+    /// Whether result was cached
+    pub cached: bool,
 }
 
 /// Response from the contract status endpoint
 /// Maps contract addresses to their analysis results
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[schema(
     examples(
         json!({
             "0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d": {
                 "chain_id": 1,
-                "contract_spam_status": false,
-                "message": "contract metadata found on Ethereum, AI analysis classified as legitimate"
+                "status": "legitimate",
+                "message": "contract metadata found on Ethereum, AI analysis classified as legitimate",
+                "reasoning": "AI analysis classified as legitimate",
+                "processing_time_ms": 150,
+                "cached": false
             }
         }),
         json!({
             "0x1234567890abcdef1234567890abcdef12345678": {
                 "chain_id": 137,
-                "contract_spam_status": false,
-                "message": "contract metadata found on Polygon, AI analysis classified as legitimate"
+                "status": "legitimate",
+                "message": "contract metadata found on Polygon, AI analysis classified as legitimate",
+                "reasoning": null,
+                "processing_time_ms": 120,
+                "cached": true
             },
             "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd": {
                 "chain_id": 137,
-                "contract_spam_status": true,
-                "message": "contract metadata found on Polygon, AI analysis classified as spam"
+                "status": "spam",
+                "message": "contract metadata found on Polygon, AI analysis classified as spam",
+                "reasoning": "exhibits scam contract patterns",
+                "processing_time_ms": 301,
+                "cached": false
             }
         }),
         json!({
             "0x60e4d786628fea6478f785a6d7e704777c86a7c6": {
                 "chain_id": 8453,
-                "contract_spam_status": false,
-                "message": "contract metadata found on Base, AI analysis classified as legitimate"
+                "status": "legitimate",
+                "message": "contract metadata found on Base, AI analysis classified as legitimate",
+                "reasoning": "AI analysis classified as legitimate",
+                "processing_time_ms": 181,
+                "cached": false
             }
         }),
         json!({
             "0x071126cbec1c5562530ab85fd80dd3e3a42a70b8": {
                 "chain_id": 43114,
-                "contract_spam_status": false,
-                "message": "contract metadata found on Avalanche, AI analysis classified as legitimate"
+                "status": "legitimate",
+                "message": "contract metadata found on Avalanche, AI analysis classified as legitimate",
+                "reasoning": "AI analysis classified as legitimate",
+                "processing_time_ms": 200,
+                "cached": false
             },
             "0xa7d7079b0fead91f3e65f86e8915cb59c1a4c664": {
                 "chain_id": 43114,
-                "contract_spam_status": false,
-                "message": "no data found for the contract on Avalanche"
+                "status": "no_data",
+                "message": "no data found for the contract on Avalanche",
+                "reasoning": null,
+                "processing_time_ms": null,
+                "cached": false
             }
         }),
         json!({
             "0x32400084c286cf3e17e7b677ea9583e60a000324": {
                 "chain_id": 42161,
-                "contract_spam_status": false,
-                "message": "contract metadata found on Arbitrum, AI analysis classified as legitimate"
+                "status": "legitimate",
+                "message": "contract metadata found on Arbitrum, AI analysis classified as legitimate",
+                "reasoning": "AI analysis classified as legitimate",
+                "processing_time_ms": 160,
+                "cached": false
             }
         })
     )
@@ -286,12 +339,15 @@ pub async fn contract_status_handler(
 
                         ContractStatusResult {
                             chain_id,
-                            contract_spam_status: analysis_result.is_spam,
+                            status: analysis_result.status.clone(),
                             message: format!(
                                 "contract metadata found on {}, {}",
                                 chain_id.name(),
                                 analysis_result.message
                             ),
+                            reasoning: analysis_result.reasoning.clone(),
+                            processing_time_ms: analysis_result.processing_time_ms,
+                            cached: analysis_result.cached,
                         }
                     }
                     Ok(None) => {
@@ -302,11 +358,14 @@ pub async fn contract_status_handler(
                         );
                         ContractStatusResult {
                             chain_id,
-                            contract_spam_status: false,
+                            status: ContractSpamStatus::NoData,
                             message: format!(
                                 "no data found for the contract on {}",
                                 chain_id.name()
                             ),
+                            reasoning: None,
+                            processing_time_ms: None,
+                            cached: false,
                         }
                     }
                     Err(e) => {
@@ -323,11 +382,14 @@ pub async fn contract_status_handler(
                         );
                         ContractStatusResult {
                             chain_id,
-                            contract_spam_status: false,
+                            status: ContractSpamStatus::Error,
                             message: format!(
                                 "unable to retrieve contract data from external services for {}",
                                 chain_id.name()
                             ),
+                            reasoning: Some(format!("External API error: {e}")),
+                            processing_time_ms: None,
+                            cached: false,
                         }
                     }
                 }
@@ -348,13 +410,16 @@ pub async fn contract_status_handler(
 
                         ContractStatusResult {
                             chain_id,
-                            contract_spam_status: analysis_result.is_spam,
+                            status: analysis_result.status.clone(),
                             message: format!(
                                 "contract metadata found on {} - {} - {}",
                                 chain_id.name(),
                                 chain_id.status_message(),
                                 analysis_result.message
                             ),
+                            reasoning: analysis_result.reasoning.clone(),
+                            processing_time_ms: analysis_result.processing_time_ms,
+                            cached: analysis_result.cached,
                         }
                     }
                     Ok(None) => {
@@ -365,12 +430,15 @@ pub async fn contract_status_handler(
                         );
                         ContractStatusResult {
                             chain_id,
-                            contract_spam_status: false,
+                            status: ContractSpamStatus::NoData,
                             message: format!(
                                 "no data found for the contract on {} - {}",
                                 chain_id.name(),
                                 chain_id.status_message()
                             ),
+                            reasoning: None,
+                            processing_time_ms: None,
+                            cached: false,
                         }
                     }
                     Err(e) => {
@@ -387,12 +455,15 @@ pub async fn contract_status_handler(
                         );
                         ContractStatusResult {
                             chain_id,
-                            contract_spam_status: false,
+                            status: ContractSpamStatus::Error,
                             message: format!(
                                 "unable to retrieve contract data for {} - {}",
                                 chain_id.name(),
                                 chain_id.status_message()
                             ),
+                            reasoning: Some(format!("External API error: {e}")),
+                            processing_time_ms: None,
+                            cached: false,
                         }
                     }
                 }
@@ -401,12 +472,15 @@ pub async fn contract_status_handler(
                 // Planned implementation - not yet available
                 ContractStatusResult {
                     chain_id,
-                    contract_spam_status: false,
+                    status: ContractSpamStatus::NoData,
                     message: format!(
                         "contract analysis for {} is {}",
                         chain_id.name(),
                         chain_id.status_message()
                     ),
+                    reasoning: None,
+                    processing_time_ms: None,
+                    cached: false,
                 }
             }
         };
@@ -415,7 +489,7 @@ pub async fn contract_status_handler(
     }
 
     let duration = start_time.elapsed();
-    let spam_count = results.values().filter(|r| r.contract_spam_status).count();
+    let spam_count = results.values().filter(|r| r.status.is_spam()).count();
     let total_addresses = results.len();
 
     info!(
@@ -428,7 +502,7 @@ pub async fn contract_status_handler(
     );
 
     debug!(
-        results_summary = ?results.iter().map(|(addr, result)| (addr, result.contract_spam_status)).collect::<Vec<_>>(),
+        results_summary = ?results.iter().map(|(addr, result)| (addr, &result.status)).collect::<Vec<_>>(),
         "detailed results summary"
     );
 
@@ -454,56 +528,56 @@ async fn perform_spam_analysis(
 
     let result = match spam_predictor.predict_spam_typed(request).await {
         Ok(prediction_result) => {
-            let is_spam = prediction_result.classification().is_spam();
-            let duration = start_time.elapsed().as_secs_f64();
+            let duration = start_time.elapsed();
+            let duration_f64 = duration.as_secs_f64();
             #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-            let duration_ms = (duration * 1000.0) as u128;
+            let duration_ms = (duration_f64 * 1000.0) as u128;
 
-            crate::metrics::observe_spam_predictor_duration("success", duration);
+            crate::metrics::observe_spam_predictor_duration("success", duration_f64);
 
-            if is_spam {
-                info!(
-                    contract_address = %contract_address,
-                    ?duration_ms,
-                    "ai analysis classified contract as spam"
-                );
-                SpamAnalysisResult {
-                    is_spam: true,
-                    message: "AI analysis classified as spam",
-                }
-            } else {
-                info!(
-                    contract_address = %contract_address,
-                    ?duration_ms,
-                    "ai analysis classified contract as legitimate"
-                );
-                SpamAnalysisResult {
-                    is_spam: false,
-                    message: "AI analysis classified as legitimate",
-                }
+            let status = ContractSpamStatus::from(prediction_result.classification());
+
+            info!(
+                contract_address = %contract_address,
+                ?duration_ms,
+                status = ?status,
+                "ai analysis completed"
+            );
+
+            let message = status.default_message().to_owned();
+            SpamAnalysisResult {
+                status,
+                message,
+                reasoning: prediction_result.reasoning().map(ToString::to_string),
+                processing_time_ms: Some(u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)),
+                cached: prediction_result.is_cached(),
             }
         }
         Err(e) => {
-            let duration = start_time.elapsed().as_secs_f64();
+            let duration = start_time.elapsed();
+            let duration_f64 = duration.as_secs_f64();
             #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-            let duration_ms = (duration * 1000.0) as u128;
+            let duration_ms = (duration_f64 * 1000.0) as u128;
             warn!(
                 contract_address = %contract_address,
                 ?duration_ms,
                 error = %e,
                 "spam prediction failed"
             );
-            crate::metrics::observe_spam_predictor_duration("error", duration);
+            crate::metrics::observe_spam_predictor_duration("error", duration_f64);
             SpamAnalysisResult {
-                is_spam: false,
-                message: "spam prediction unavailable, defaulting to not spam",
+                status: ContractSpamStatus::Error,
+                message: "prediction failed".to_string(),
+                reasoning: Some(format!("Prediction error: {e}")),
+                processing_time_ms: Some(u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)),
+                cached: false,
             }
         }
     };
 
     debug!(
         contract_address = %contract_address,
-        is_spam = result.is_spam,
+        status = ?result.status,
         message = result.message,
         total_duration_ms = start_time.elapsed().as_millis(),
         "spam analysis completed"
