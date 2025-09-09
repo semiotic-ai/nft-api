@@ -24,6 +24,7 @@ chrono = { workspace = true }
 config = { workspace = true }
 dashmap.workspace = true
 external-apis = { workspace = true }
+futures = { workspace = true }
 hyper = { workspace = true }
 prometheus = { workspace = true }
 serde = { workspace = true }

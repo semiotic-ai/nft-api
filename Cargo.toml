@@ -27,6 +27,7 @@ chrono = { version = "0.4.41", features = ["serde"] }
 config = "0.15.15"
 dashmap = "6.1.0"
 external-apis = { path = "crates/external-apis" }
+futures = "0.3.31"
 hyper = "1.7.0"
 mockall = "0.13.1"
 prometheus = "0.14.0"

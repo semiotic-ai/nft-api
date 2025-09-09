@@ -8,12 +8,14 @@
 //! including health checks, API endpoints, and cancellation-aware handlers
 //! for coordinated graceful shutdown.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use alloy_primitives::Address;
 use axum::{Json, extract::State, response::IntoResponse};
+use external_apis::ApiRegistry;
 use serde::{Deserialize, Serialize};
 use shared_types::{ChainId, ChainImplementationStatus, ContractSpamStatus};
+use spam_predictor::SpamPredictor;
 use tracing::{debug, error, info, instrument, warn};
 use utoipa::ToSchema;
 
@@ -258,6 +260,203 @@ pub struct ContractStatusResponse {
     pub results: HashMap<Address, ContractStatusResult>,
 }
 
+/// Process a single contract address for spam analysis
+///
+/// Handles the complete analysis pipeline for a single address including:
+/// - Fetching metadata from external APIs
+/// - Running spam prediction analysis
+/// - Building the appropriate result based on chain implementation status
+#[instrument(skip(api_registry, spam_predictor), fields(
+    address = %address,
+    chain_id = %chain_id,
+    implementation_status = %implementation_status
+))]
+async fn process_single_address(
+    address: Address,
+    chain_id: ChainId,
+    implementation_status: ChainImplementationStatus,
+    api_registry: &ApiRegistry,
+    spam_predictor: &Arc<SpamPredictor>,
+) -> ContractStatusResult {
+    debug!(
+        address = %address,
+        chain_id = %chain_id,
+        "processing contract address"
+    );
+
+    match implementation_status {
+        ChainImplementationStatus::Full => {
+            process_with_full_implementation(address, chain_id, api_registry, spam_predictor).await
+        }
+        ChainImplementationStatus::Partial => {
+            process_with_partial_implementation(address, chain_id, api_registry, spam_predictor)
+                .await
+        }
+        ChainImplementationStatus::Planned => ContractStatusResult {
+            chain_id,
+            status: ContractSpamStatus::NoData,
+            message: format!(
+                "contract analysis for {} is {}",
+                chain_id.name(),
+                chain_id.status_message()
+            ),
+            reasoning: None,
+            processing_time_ms: None,
+            cached: false,
+        },
+    }
+}
+
+async fn process_with_full_implementation(
+    address: Address,
+    chain_id: ChainId,
+    api_registry: &ApiRegistry,
+    spam_predictor: &Arc<SpamPredictor>,
+) -> ContractStatusResult {
+    let start = std::time::Instant::now();
+
+    match api_registry.get_contract_metadata(address, chain_id).await {
+        Ok(Some(metadata)) => {
+            crate::metrics::observe_metadata_api_duration(
+                "external_api",
+                "found",
+                start.elapsed().as_secs_f64(),
+            );
+            let analysis_result = perform_spam_analysis(&metadata, spam_predictor, address).await;
+
+            ContractStatusResult {
+                chain_id,
+                status: analysis_result.status.clone(),
+                message: format!(
+                    "contract metadata found on {}, {}",
+                    chain_id.name(),
+                    analysis_result.message
+                ),
+                reasoning: analysis_result.reasoning.clone(),
+                processing_time_ms: analysis_result.processing_time_ms,
+                cached: analysis_result.cached,
+            }
+        }
+        Ok(None) => {
+            crate::metrics::observe_metadata_api_duration(
+                "external_api",
+                "missing",
+                start.elapsed().as_secs_f64(),
+            );
+            ContractStatusResult {
+                chain_id,
+                status: ContractSpamStatus::NoData,
+                message: format!("no data found for the contract on {}", chain_id.name()),
+                reasoning: None,
+                processing_time_ms: None,
+                cached: false,
+            }
+        }
+        Err(e) => {
+            crate::metrics::observe_metadata_api_duration(
+                "external_api",
+                "error",
+                start.elapsed().as_secs_f64(),
+            );
+            error!(
+                %address,
+                chain = chain_id.name(),
+                error = %e,
+                "failed to fetch contract metadata"
+            );
+            ContractStatusResult {
+                chain_id,
+                status: ContractSpamStatus::Error,
+                message: format!(
+                    "unable to retrieve contract data from external services for {}",
+                    chain_id.name()
+                ),
+                reasoning: Some(format!("External API error: {e}")),
+                processing_time_ms: None,
+                cached: false,
+            }
+        }
+    }
+}
+
+async fn process_with_partial_implementation(
+    address: Address,
+    chain_id: ChainId,
+    api_registry: &ApiRegistry,
+    spam_predictor: &Arc<SpamPredictor>,
+) -> ContractStatusResult {
+    let start = std::time::Instant::now();
+
+    match api_registry.get_contract_metadata(address, chain_id).await {
+        Ok(Some(metadata)) => {
+            crate::metrics::observe_metadata_api_duration(
+                "external_api",
+                "found",
+                start.elapsed().as_secs_f64(),
+            );
+            let analysis_result = perform_spam_analysis(&metadata, spam_predictor, address).await;
+
+            ContractStatusResult {
+                chain_id,
+                status: analysis_result.status.clone(),
+                message: format!(
+                    "contract metadata found on {} - {} - {}",
+                    chain_id.name(),
+                    chain_id.status_message(),
+                    analysis_result.message
+                ),
+                reasoning: analysis_result.reasoning.clone(),
+                processing_time_ms: analysis_result.processing_time_ms,
+                cached: analysis_result.cached,
+            }
+        }
+        Ok(None) => {
+            crate::metrics::observe_metadata_api_duration(
+                "external_api",
+                "missing",
+                start.elapsed().as_secs_f64(),
+            );
+            ContractStatusResult {
+                chain_id,
+                status: ContractSpamStatus::NoData,
+                message: format!(
+                    "no data found for the contract on {} - {}",
+                    chain_id.name(),
+                    chain_id.status_message()
+                ),
+                reasoning: None,
+                processing_time_ms: None,
+                cached: false,
+            }
+        }
+        Err(e) => {
+            crate::metrics::observe_metadata_api_duration(
+                "external_api",
+                "error",
+                start.elapsed().as_secs_f64(),
+            );
+            error!(
+                %address,
+                chain = chain_id.name(),
+                error = %e,
+                "failed to fetch contract metadata"
+            );
+            ContractStatusResult {
+                chain_id,
+                status: ContractSpamStatus::Error,
+                message: format!(
+                    "unable to retrieve contract data for {} - {}",
+                    chain_id.name(),
+                    chain_id.status_message()
+                ),
+                reasoning: Some(format!("External API error: {e}")),
+                processing_time_ms: None,
+                cached: false,
+            }
+        }
+    }
+}
+
 /// Contract status analysis
 ///
 /// Analyzes blockchain contracts to determine if they are spam by:
@@ -313,178 +512,15 @@ pub async fn contract_status_handler(
     let api_registry = state.api_registry();
     let mut results = HashMap::new();
 
-    for (index, address) in contract_status.addresses.iter().enumerate() {
-        debug!(
-            address = %address,
-            index = index,
-            chain_id = %chain_id,
-            "processing contract address"
-        );
-
-        let start = std::time::Instant::now();
-        let result = match implementation_status {
-            ChainImplementationStatus::Full => {
-                // Full implementation - perform normal analysis
-                match api_registry.get_contract_metadata(*address, chain_id).await {
-                    Ok(Some(metadata)) => {
-                        crate::metrics::observe_metadata_api_duration(
-                            "external_api",
-                            "found",
-                            start.elapsed().as_secs_f64(),
-                        );
-                        // Perform spam prediction if spam predictor is available
-                        let analysis_result =
-                            perform_spam_analysis(&metadata, state.spam_predictor(), *address)
-                                .await;
-
-                        ContractStatusResult {
-                            chain_id,
-                            status: analysis_result.status.clone(),
-                            message: format!(
-                                "contract metadata found on {}, {}",
-                                chain_id.name(),
-                                analysis_result.message
-                            ),
-                            reasoning: analysis_result.reasoning.clone(),
-                            processing_time_ms: analysis_result.processing_time_ms,
-                            cached: analysis_result.cached,
-                        }
-                    }
-                    Ok(None) => {
-                        crate::metrics::observe_metadata_api_duration(
-                            "external_api",
-                            "missing",
-                            start.elapsed().as_secs_f64(),
-                        );
-                        ContractStatusResult {
-                            chain_id,
-                            status: ContractSpamStatus::NoData,
-                            message: format!(
-                                "no data found for the contract on {}",
-                                chain_id.name()
-                            ),
-                            reasoning: None,
-                            processing_time_ms: None,
-                            cached: false,
-                        }
-                    }
-                    Err(e) => {
-                        crate::metrics::observe_metadata_api_duration(
-                            "external_api",
-                            "error",
-                            start.elapsed().as_secs_f64(),
-                        );
-                        error!(
-                            "failed to fetch contract metadata for {} on {}: {}",
-                            *address,
-                            chain_id.name(),
-                            e
-                        );
-                        ContractStatusResult {
-                            chain_id,
-                            status: ContractSpamStatus::Error,
-                            message: format!(
-                                "unable to retrieve contract data from external services for {}",
-                                chain_id.name()
-                            ),
-                            reasoning: Some(format!("External API error: {e}")),
-                            processing_time_ms: None,
-                            cached: false,
-                        }
-                    }
-                }
-            }
-            ChainImplementationStatus::Partial => {
-                // Partial implementation - limited analysis with warning
-                match api_registry.get_contract_metadata(*address, chain_id).await {
-                    Ok(Some(metadata)) => {
-                        crate::metrics::observe_metadata_api_duration(
-                            "external_api",
-                            "found",
-                            start.elapsed().as_secs_f64(),
-                        );
-                        // Perform spam prediction if spam predictor is available
-                        let analysis_result =
-                            perform_spam_analysis(&metadata, state.spam_predictor(), *address)
-                                .await;
-
-                        ContractStatusResult {
-                            chain_id,
-                            status: analysis_result.status.clone(),
-                            message: format!(
-                                "contract metadata found on {} - {} - {}",
-                                chain_id.name(),
-                                chain_id.status_message(),
-                                analysis_result.message
-                            ),
-                            reasoning: analysis_result.reasoning.clone(),
-                            processing_time_ms: analysis_result.processing_time_ms,
-                            cached: analysis_result.cached,
-                        }
-                    }
-                    Ok(None) => {
-                        crate::metrics::observe_metadata_api_duration(
-                            "external_api",
-                            "missing",
-                            start.elapsed().as_secs_f64(),
-                        );
-                        ContractStatusResult {
-                            chain_id,
-                            status: ContractSpamStatus::NoData,
-                            message: format!(
-                                "no data found for the contract on {} - {}",
-                                chain_id.name(),
-                                chain_id.status_message()
-                            ),
-                            reasoning: None,
-                            processing_time_ms: None,
-                            cached: false,
-                        }
-                    }
-                    Err(e) => {
-                        crate::metrics::observe_metadata_api_duration(
-                            "external_api",
-                            "error",
-                            start.elapsed().as_secs_f64(),
-                        );
-                        error!(
-                            "failed to fetch contract metadata for {} on {}: {}",
-                            *address,
-                            chain_id.name(),
-                            e
-                        );
-                        ContractStatusResult {
-                            chain_id,
-                            status: ContractSpamStatus::Error,
-                            message: format!(
-                                "unable to retrieve contract data for {} - {}",
-                                chain_id.name(),
-                                chain_id.status_message()
-                            ),
-                            reasoning: Some(format!("External API error: {e}")),
-                            processing_time_ms: None,
-                            cached: false,
-                        }
-                    }
-                }
-            }
-            ChainImplementationStatus::Planned => {
-                // Planned implementation - not yet available
-                ContractStatusResult {
-                    chain_id,
-                    status: ContractSpamStatus::NoData,
-                    message: format!(
-                        "contract analysis for {} is {}",
-                        chain_id.name(),
-                        chain_id.status_message()
-                    ),
-                    reasoning: None,
-                    processing_time_ms: None,
-                    cached: false,
-                }
-            }
-        };
-
+    for address in &contract_status.addresses {
+        let result = process_single_address(
+            *address,
+            chain_id,
+            implementation_status,
+            api_registry,
+            state.spam_predictor(),
+        )
+        .await;
         results.insert(*address, result);
     }
 
@@ -517,7 +553,7 @@ pub async fn contract_status_handler(
 ))]
 async fn perform_spam_analysis(
     metadata: &api_client::ContractMetadata,
-    spam_predictor: &std::sync::Arc<spam_predictor::SpamPredictor>,
+    spam_predictor: &Arc<SpamPredictor>,
     contract_address: Address,
 ) -> SpamAnalysisResult {
     let start_time = std::time::Instant::now();

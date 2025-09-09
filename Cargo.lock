@@ -105,6 +105,7 @@ dependencies = [
  "config",
  "dashmap",
  "external-apis",
+ "futures",
  "hyper",
  "prometheus",
  "reqwest",
