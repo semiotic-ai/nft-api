@@ -377,6 +377,27 @@ impl Default for RateLimitingConfig {
     }
 }
 
+/// Concurrency configuration for contract processing
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConcurrencyConfig {
+    /// Maximum number of concurrent external API calls per request
+    pub max_concurrent_external_api_calls: u16,
+    /// Maximum number of concurrent spam analysis operations per request
+    pub max_concurrent_spam_analysis: u16,
+    /// Timeout in seconds for individual address processing
+    pub individual_address_timeout_seconds: TimeoutSeconds,
+}
+
+impl Default for ConcurrencyConfig {
+    fn default() -> Self {
+        Self {
+            max_concurrent_external_api_calls: 10,
+            max_concurrent_spam_analysis: 20,
+            individual_address_timeout_seconds: TimeoutSeconds::default(),
+        }
+    }
+}
+
 /// Environment types for configuration
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
@@ -424,6 +445,8 @@ pub struct ServerConfig {
     pub spam_predictor: SpamPredictorConfig,
     /// Rate limiting configuration
     pub rate_limiting: RateLimitingConfig,
+    /// Concurrency configuration
+    pub concurrency: ConcurrencyConfig,
     /// Prometheus metrics configuration
     pub metrics: MetricsConfig,
     /// Chain-specific configurations
@@ -443,6 +466,7 @@ impl Default for ServerConfig {
             external_apis: ExternalApiConfig::default(),
             spam_predictor: SpamPredictorConfig::default(),
             rate_limiting: RateLimitingConfig::default(),
+            concurrency: ConcurrencyConfig::default(),
             metrics: MetricsConfig::default(),
             chains: Self::default_chains(),
             extensions: HashMap::new(),
@@ -624,8 +648,46 @@ impl ServerConfig {
             );
         }
 
+        // Validate concurrency configuration
+        self.validate_concurrency_configuration()?;
+
         // Validate chain configurations
         self.validate_chain_configurations()?;
+
+        Ok(())
+    }
+
+    /// Validate concurrency configuration parameters
+    fn validate_concurrency_configuration(&self) -> Result<()> {
+        ensure!(
+            self.concurrency.max_concurrent_external_api_calls > 0,
+            "max_concurrent_external_api_calls must be greater than 0"
+        );
+        ensure!(
+            self.concurrency.max_concurrent_external_api_calls <= 100,
+            "max_concurrent_external_api_calls of {} is too high - maximum is 100 for safety",
+            self.concurrency.max_concurrent_external_api_calls
+        );
+
+        ensure!(
+            self.concurrency.max_concurrent_spam_analysis > 0,
+            "max_concurrent_spam_analysis must be greater than 0"
+        );
+        ensure!(
+            self.concurrency.max_concurrent_spam_analysis <= 500,
+            "max_concurrent_spam_analysis of {} is too high - maximum is 500 for safety",
+            self.concurrency.max_concurrent_spam_analysis
+        );
+
+        // Individual address timeout should not exceed the global timeout
+        let individual_timeout = self.concurrency.individual_address_timeout_seconds.value();
+        let global_timeout = self.timeout_seconds.value();
+        ensure!(
+            individual_timeout <= global_timeout,
+            "individual_address_timeout_seconds ({:?}) cannot exceed global timeout_seconds ({:?})",
+            individual_timeout,
+            global_timeout
+        );
 
         Ok(())
     }
@@ -914,6 +976,13 @@ impl ServerConfig {
                 "rate_limiting.requests_per_minute",
                 DEFAULT_RATE_LIMIT_REQUESTS_PER_MINUTE,
             )?
+            // Concurrency defaults
+            .set_default("concurrency.max_concurrent_external_api_calls", 10u32)?
+            .set_default("concurrency.max_concurrent_spam_analysis", 20u32)?
+            .set_default(
+                "concurrency.individual_address_timeout_seconds",
+                DEFAULT_TIMEOUT_SECONDS,
+            )?
             // Metrics defaults
             .set_default("metrics.endpoint_path", DEFAULT_METRICS_ENDPOINT_PATH)?
             .set_default("metrics.port", i64::from(DEFAULT_METRICS_PORT))?
@@ -970,6 +1039,7 @@ impl ServerConfig {
                 enabled: false,
                 requests_per_minute: 0,
             },
+            concurrency: ConcurrencyConfig::default(),
             metrics: MetricsConfig::default(),
             chains: Self::default_chains(),
             extensions: HashMap::new(),

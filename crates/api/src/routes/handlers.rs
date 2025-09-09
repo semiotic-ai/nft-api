@@ -13,9 +13,11 @@ use std::{collections::HashMap, sync::Arc};
 use alloy_primitives::Address;
 use axum::{Json, extract::State, response::IntoResponse};
 use external_apis::ApiRegistry;
+use futures::{StreamExt, stream};
 use serde::{Deserialize, Serialize};
 use shared_types::{ChainId, ChainImplementationStatus, ContractSpamStatus};
 use spam_predictor::SpamPredictor;
+use tokio::time::timeout;
 use tracing::{debug, error, info, instrument, warn};
 use utoipa::ToSchema;
 
@@ -486,7 +488,7 @@ async fn process_with_partial_implementation(
         (status = 500, description = "Internal server error during analysis", body = String)
     )
 )]
-#[allow(clippy::too_many_lines)] // Complex handler with multiple analysis steps
+#[allow(clippy::cast_precision_loss, clippy::too_many_lines)]
 #[instrument(skip(state, contract_status), fields(
     chain_id = %contract_status.chain_id,
     addresses_count = contract_status.addresses.len(),
@@ -497,11 +499,6 @@ pub async fn contract_status_handler(
     JsonExtractor(contract_status): JsonExtractor<ContractStatusRequest>,
 ) -> Result<Json<ContractStatusResponse>, ServerError> {
     let start_time = std::time::Instant::now();
-    info!(
-        chain_id = %contract_status.chain_id,
-        addresses_count = contract_status.addresses.len(),
-        "starting contract status analysis"
-    );
     contract_status
         .validate()
         .map_err(|msg| ServerError::ValidationError(msg.to_string()))?;
@@ -510,31 +507,115 @@ pub async fn contract_status_handler(
     crate::metrics::inc_requests_by_chain(chain_id);
     let implementation_status = chain_id.implementation_status();
     let api_registry = state.api_registry();
-    let mut results = HashMap::new();
 
-    for address in &contract_status.addresses {
-        let result = process_single_address(
-            *address,
-            chain_id,
-            implementation_status,
-            api_registry,
-            state.spam_predictor(),
-        )
+    // Get concurrency configuration
+    let config = state.config();
+    let max_concurrency = config.concurrency.max_concurrent_external_api_calls as usize;
+    let individual_timeout = config
+        .concurrency
+        .individual_address_timeout_seconds
+        .value();
+
+    info!(
+        chain_id = %chain_id,
+        addresses_count = contract_status.addresses.len(),
+        max_concurrency = max_concurrency,
+        individual_timeout_seconds = individual_timeout.as_secs(),
+        "starting concurrent contract status analysis"
+    );
+
+    // Process addresses concurrently with bounded concurrency
+    let addresses: Vec<Address> = contract_status.addresses.clone();
+    let results: HashMap<Address, ContractStatusResult> = stream::iter(addresses)
+        .map(|address| {
+            let api_registry = api_registry.clone();
+            let spam_predictor = state.spam_predictor().clone();
+
+            async move {
+                let result = timeout(
+                    individual_timeout,
+                    process_single_address(
+                        address,
+                        chain_id,
+                        implementation_status,
+                        &api_registry,
+                        &spam_predictor,
+                    ),
+                )
+                .await;
+
+                #[allow(clippy::cast_possible_truncation)]
+                let final_result = if let Ok(result) = result {
+                    result
+                } else {
+                    warn!(
+                        address = %address,
+                        chain_id = %chain_id,
+                        timeout_seconds = individual_timeout.as_secs(),
+                        "individual address processing timed out"
+                    );
+                    ContractStatusResult {
+                        chain_id,
+                        status: ContractSpamStatus::Error,
+                        message: format!(
+                            "processing timeout for {} after {} seconds",
+                            chain_id.name(),
+                            individual_timeout.as_secs()
+                        ),
+                        reasoning: Some("Individual address processing timeout".to_string()),
+                        processing_time_ms: Some(individual_timeout.as_millis() as u64),
+                        cached: false,
+                    }
+                };
+
+                (address, final_result)
+            }
+        })
+        .buffer_unordered(max_concurrency)
+        .collect()
         .await;
-        results.insert(*address, result);
-    }
 
     let duration = start_time.elapsed();
     let spam_count = results.values().filter(|r| r.status.is_spam()).count();
+    let error_count = results
+        .values()
+        .filter(|r| matches!(r.status, ContractSpamStatus::Error))
+        .count();
+    let timeout_count = results
+        .values()
+        .filter(|r| {
+            r.reasoning
+                .as_ref()
+                .is_some_and(|reason| reason.contains("timeout"))
+        })
+        .count();
     let total_addresses = results.len();
+
+    // Record concurrent batch processing metrics
+    let batch_size_category = match total_addresses {
+        1 => "single",
+        2..=5 => "small",
+        6..=20 => "medium",
+        21..=100 => "large",
+        _ => "extra_large",
+    };
+    crate::metrics::observe_concurrent_batch_duration(
+        &chain_id.to_string(),
+        batch_size_category,
+        duration.as_secs_f64(),
+    );
 
     info!(
         chain_id = %chain_id,
         total_addresses = total_addresses,
         spam_contracts = spam_count,
-        legitimate_contracts = total_addresses - spam_count,
+        legitimate_contracts = total_addresses - spam_count - error_count,
+        error_count = error_count,
+        timeout_count = timeout_count,
+        max_concurrency = max_concurrency,
         duration_ms = duration.as_millis(),
-        "contract status analysis completed"
+        concurrent_speedup_estimate = format!("{:.1}x", (total_addresses as f64) / (max_concurrency.max(1) as f64)),
+        "concurrent contract status analysis completed"
     );
 
     debug!(

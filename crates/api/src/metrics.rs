@@ -51,6 +51,17 @@ pub static SPAM_PREDICTOR_REQUEST_DURATION: LazyLock<HistogramVec> = LazyLock::n
     .expect("Failed to create spam predictor request duration histogram")
 });
 
+/// Histogram for concurrent batch processing durations in seconds.
+pub static CONCURRENT_BATCH_DURATION: LazyLock<HistogramVec> = LazyLock::new(|| {
+    register_histogram_vec!(
+        "nft_api_concurrent_batch_duration",
+        "Concurrent batch processing durations in seconds",
+        &["chain_id", "batch_size_category"],
+        vec![0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0]
+    )
+    .expect("Failed to create concurrent batch duration histogram")
+});
+
 /// Increment the requests counter with `chain_id` label
 ///
 /// # Arguments
@@ -81,6 +92,22 @@ pub fn observe_metadata_api_duration(api_name: &str, result: &str, duration_secs
 pub fn observe_spam_predictor_duration(result: &str, duration_secs: f64) {
     SPAM_PREDICTOR_REQUEST_DURATION
         .with_label_values(&[result])
+        .observe(duration_secs);
+}
+
+/// Observe the duration of concurrent batch processing
+///
+/// # Arguments
+/// * `chain_id_str` - The chain ID string being processed
+/// * `batch_size_category` - The category of batch size
+/// * `duration_secs` - The duration of the batch processing in seconds
+pub fn observe_concurrent_batch_duration(
+    chain_id_str: &str,
+    batch_size_category: &str,
+    duration_secs: f64,
+) {
+    CONCURRENT_BATCH_DURATION
+        .with_label_values(&[chain_id_str, batch_size_category])
         .observe(duration_secs);
 }
 
