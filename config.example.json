@@ -25,6 +25,12 @@
       "health_check_timeout_seconds": 5,
       "max_retries": 3,
       "enabled": true
+    },
+    "cache": {
+      "enabled": true,
+      "ttl_seconds": 21600,
+      "max_entries": 50000,
+      "cleanup_interval_seconds": 3600
     }
   },
   "spam_predictor": {

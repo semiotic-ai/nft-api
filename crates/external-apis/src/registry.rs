@@ -14,13 +14,17 @@ use api_client::{ApiClient, ContractMetadata, HealthStatus};
 use shared_types::ChainId;
 use tracing::{debug, info, warn};
 
-use crate::{MoralisClient, PinaxClient};
+use crate::{
+    MoralisClient, PinaxClient,
+    cache::{ApiProvider, MetadataCache, MetadataCacheKey},
+};
 
-/// Registry for managing API clients with fallback logic
+/// Registry for managing API clients with fallback logic and caching
 #[derive(Debug)]
 pub struct ApiRegistry {
     moralis_client: Option<MoralisClient>,
     pinax_client: Option<PinaxClient>,
+    cache: MetadataCache,
 }
 
 /// Error type for registry operations
@@ -47,15 +51,16 @@ impl Default for ApiRegistry {
 }
 
 impl ApiRegistry {
-    /// Create a new empty API registry
+    /// Create a new empty API registry with default cache settings
     pub fn new() -> Self {
         Self {
             moralis_client: None,
             pinax_client: None,
+            cache: MetadataCache::new(),
         }
     }
 
-    /// Create a new API registry with the specified clients
+    /// Create a new API registry with the specified clients and default cache
     pub fn with_clients(
         moralis_client: Option<MoralisClient>,
         pinax_client: Option<PinaxClient>,
@@ -63,10 +68,24 @@ impl ApiRegistry {
         Self {
             moralis_client,
             pinax_client,
+            cache: MetadataCache::new(),
         }
     }
 
-    /// Get contract metadata using the first available healthy client
+    /// Create a new API registry with the specified clients and cache settings
+    pub fn with_clients_and_cache(
+        moralis_client: Option<MoralisClient>,
+        pinax_client: Option<PinaxClient>,
+        cache: MetadataCache,
+    ) -> Self {
+        Self {
+            moralis_client,
+            pinax_client,
+            cache,
+        }
+    }
+
+    /// Get contract metadata using cache first, then fallback to available clients
     ///
     /// # Arguments
     ///
@@ -75,7 +94,7 @@ impl ApiRegistry {
     ///
     /// # Returns
     ///
-    /// * `Ok(Some(metadata))` if metadata was retrieved successfully
+    /// * `Ok(Some(metadata))` if metadata was retrieved successfully (from cache or API)
     /// * `Ok(None)` if no metadata was found (but clients were healthy)
     /// * `Err(error)` if all clients failed or no clients are available
     pub async fn get_contract_metadata(
@@ -83,6 +102,18 @@ impl ApiRegistry {
         address: Address,
         chain_id: ChainId,
     ) -> Result<Option<ContractMetadata>, RegistryError> {
+        // Check cache first
+        let cache_key = MetadataCacheKey::new(address, chain_id);
+        if let Some(cached_result) = self.cache.get_metadata(&cache_key) {
+            debug!(
+                "cache hit for address {} on chain {}",
+                address,
+                chain_id.name()
+            );
+            return Ok(cached_result);
+        }
+
+        // Cache miss - try external APIs
         if self.moralis_client.is_none() && self.pinax_client.is_none() {
             return Err(RegistryError::NoClients);
         }
@@ -93,6 +124,9 @@ impl ApiRegistry {
             .try_moralis_metadata(address, chain_id, &mut errors)
             .await
         {
+            // Cache the successful result
+            self.cache
+                .store_metadata(&cache_key, result.as_ref(), &ApiProvider::Moralis);
             return Ok(result);
         }
 
@@ -100,14 +134,28 @@ impl ApiRegistry {
             .try_pinax_metadata(address, chain_id, &mut errors)
             .await
         {
+            // Cache the successful result
+            self.cache
+                .store_metadata(&cache_key, result.as_ref(), &ApiProvider::Pinax);
             return Ok(result);
         }
 
         if errors.is_empty() {
             debug!(
-                "No metadata found for address {} on chain {} in any client",
+                "no metadata found for address {} on chain {} in any client",
                 address,
                 chain_id.name()
+            );
+            // Cache the "no data" result to avoid repeated API calls
+            self.cache.store_metadata(
+                &cache_key,
+                None,
+                // Use Moralis as default provider for "no data" entries
+                if self.moralis_client.is_some() {
+                    &ApiProvider::Moralis
+                } else {
+                    &ApiProvider::Pinax
+                },
             );
             Ok(None)
         } else {
@@ -126,38 +174,22 @@ impl ApiRegistry {
     ) -> Option<Option<ContractMetadata>> {
         let moralis_client = self.moralis_client.as_ref()?;
 
-        match self.is_moralis_healthy().await {
-            Ok(true) => {
-                debug!(
-                    "Trying healthy Moralis client for chain {}",
-                    chain_id.name()
-                );
-                match moralis_client
-                    .get_contract_metadata(address, chain_id)
-                    .await
-                {
-                    Ok(Some(metadata)) => {
-                        info!("Successfully retrieved metadata from Moralis client");
-                        Some(Some(metadata))
-                    }
-                    Ok(None) => {
-                        debug!("No metadata found in Moralis client");
-                        None
-                    }
-                    Err(e) => {
-                        warn!("Moralis client failed: {}", e);
-                        errors.push(format!("moralis: {e}"));
-                        None
-                    }
-                }
+        debug!("Trying Moralis client for chain {}", chain_id.name());
+        match moralis_client
+            .get_contract_metadata(address, chain_id)
+            .await
+        {
+            Ok(Some(metadata)) => {
+                info!("Successfully retrieved metadata from Moralis client");
+                Some(Some(metadata))
             }
-            Ok(false) => {
-                debug!("Skipping unhealthy Moralis client");
+            Ok(None) => {
+                debug!("No metadata found in Moralis client");
                 None
             }
             Err(e) => {
-                warn!("Health check failed for Moralis client: {}", e);
-                errors.push(format!("moralis health check: {e}"));
+                warn!("Moralis client failed: {}", e);
+                errors.push(format!("moralis: {e}"));
                 None
             }
         }
@@ -172,64 +204,21 @@ impl ApiRegistry {
     ) -> Option<Option<ContractMetadata>> {
         let pinax_client = self.pinax_client.as_ref()?;
 
-        match self.is_pinax_healthy().await {
-            Ok(true) => {
-                debug!("Trying healthy Pinax client for chain {}", chain_id.name());
-                match pinax_client.get_contract_metadata(address, chain_id).await {
-                    Ok(Some(metadata)) => {
-                        info!("Successfully retrieved metadata from Pinax client");
-                        Some(Some(metadata))
-                    }
-                    Ok(None) => {
-                        debug!("No metadata found in Pinax client");
-                        None
-                    }
-                    Err(e) => {
-                        warn!("Pinax client failed: {}", e);
-                        errors.push(format!("pinax: {e}"));
-                        None
-                    }
-                }
+        debug!("Trying Pinax client for chain {}", chain_id.name());
+        match pinax_client.get_contract_metadata(address, chain_id).await {
+            Ok(Some(metadata)) => {
+                info!("Successfully retrieved metadata from Pinax client");
+                Some(Some(metadata))
             }
-            Ok(false) => {
-                debug!("Skipping unhealthy Pinax client");
+            Ok(None) => {
+                debug!("No metadata found in Pinax client");
                 None
             }
             Err(e) => {
-                warn!("Health check failed for Pinax client: {}", e);
-                errors.push(format!("pinax health check: {e}"));
+                warn!("Pinax client failed: {}", e);
+                errors.push(format!("pinax: {e}"));
                 None
             }
-        }
-    }
-
-    /// Check if Moralis client is healthy
-    async fn is_moralis_healthy(&self) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
-        if let Some(moralis_client) = &self.moralis_client {
-            match moralis_client.health_check().await {
-                Ok(status) => {
-                    let is_healthy = matches!(status, HealthStatus::Up);
-                    Ok(is_healthy)
-                }
-                Err(e) => Err(Box::new(e)),
-            }
-        } else {
-            Err("Moralis client not available".into())
-        }
-    }
-
-    /// Check if Pinax client is healthy
-    async fn is_pinax_healthy(&self) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
-        if let Some(pinax_client) = &self.pinax_client {
-            match pinax_client.health_check().await {
-                Ok(status) => {
-                    let is_healthy = matches!(status, HealthStatus::Up);
-                    Ok(is_healthy)
-                }
-                Err(e) => Err(Box::new(e)),
-            }
-        } else {
-            Err("Pinax client not available".into())
         }
     }
 
@@ -307,6 +296,21 @@ impl ApiRegistry {
         }
         names
     }
+
+    /// Get cache statistics
+    pub fn cache_stats(&self) -> crate::cache::MetadataCacheStats {
+        self.cache.get_stats()
+    }
+
+    /// Clear all cached metadata (useful for testing or cache invalidation)
+    pub fn clear_cache(&self) {
+        self.cache.clear_metadata();
+    }
+
+    /// Clean up expired cache entries and return the number of entries removed
+    pub fn cleanup_expired_cache(&self) -> Result<usize, String> {
+        self.cache.cleanup_expired()
+    }
 }
 
 #[cfg(test)]
@@ -318,6 +322,12 @@ mod tests {
         let registry = ApiRegistry::new();
         assert_eq!(registry.client_count(), 0);
         assert!(registry.client_names().is_empty());
+
+        // Cache should be initialized
+        let stats = registry.cache_stats();
+        assert_eq!(stats.entry_count, 0);
+        assert_eq!(stats.cache_hits, 0);
+        assert_eq!(stats.cache_misses, 0);
     }
 
     #[tokio::test]
@@ -341,5 +351,25 @@ mod tests {
 
         let error = RegistryError::NoHealthyClients;
         assert_eq!(error.to_string(), "No healthy API clients available");
+    }
+
+    #[test]
+    fn cache_operations() {
+        let registry = ApiRegistry::new();
+
+        // Initial stats
+        let stats = registry.cache_stats();
+        assert_eq!(stats.entry_count, 0);
+        assert_eq!(stats.max_capacity, 50000);
+        assert_eq!(stats.ttl_seconds, 21600); // 6 hours
+
+        // Test cache clearing
+        registry.clear_cache();
+        let stats = registry.cache_stats();
+        assert_eq!(stats.entry_count, 0);
+
+        // Test cleanup (should return 0 since no entries)
+        let removed = registry.cleanup_expired_cache().unwrap();
+        assert_eq!(removed, 0);
     }
 }

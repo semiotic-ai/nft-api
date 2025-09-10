@@ -12,21 +12,25 @@
 //!
 //! - **Client Implementations**: [`moralis`], [`pinax`] - specific API integrations
 //! - **Registry Pattern**: [`registry::ApiRegistry`] - orchestrates multiple clients with failover
+//! - **Caching Layer**: [`cache`] - high-performance in-memory caching with TTL and LRU eviction
 //! - **Validation Utilities**: [`non_empty_string::NonEmptyString`] - ensures non-empty string constraints
 //!
 //! # Features
 //!
 //! - **Automatic Failover**: Registry tries clients in order, skipping unhealthy ones
+//! - **Intelligent Caching**: Contract metadata cached with configurable TTL and capacity limits
 //! - **Concurrent Health Checks**: Uses `tokio::join!` for efficient health monitoring
 //! - **Robust Error Handling**: Comprehensive error types for different failure scenarios
 //! - **Configuration Validation**: Strong typing prevents invalid configurations
 //! - **Testing Support**: Comprehensive test coverage using wiremock for HTTP simulation
 
+pub mod cache;
 pub mod moralis;
 pub mod non_empty_string;
 pub mod pinax;
 pub mod registry;
 
+pub use cache::*;
 pub use moralis::*;
 pub use non_empty_string::NonEmptyString;
 pub use pinax::*;

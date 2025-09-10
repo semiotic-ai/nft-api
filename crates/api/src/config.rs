@@ -186,6 +186,30 @@ impl<'de> Deserialize<'de> for ApiKey {
     }
 }
 
+/// Cache configuration for external APIs
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExternalApiCacheConfig {
+    /// Enable/disable caching
+    pub enabled: bool,
+    /// Cache TTL in seconds
+    pub ttl_seconds: u64,
+    /// Maximum number of cache entries
+    pub max_entries: usize,
+    /// Cleanup interval in seconds
+    pub cleanup_interval_seconds: u64,
+}
+
+impl Default for ExternalApiCacheConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            ttl_seconds: 21600,             // 6 hours
+            max_entries: 50000,             // 50k entries
+            cleanup_interval_seconds: 3600, // 1 hour
+        }
+    }
+}
+
 /// External API configuration
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ExternalApiConfig {
@@ -193,6 +217,8 @@ pub struct ExternalApiConfig {
     pub moralis: MoralisConfig,
     /// Pinax API configuration
     pub pinax: PinaxConfig,
+    /// Cache configuration for external API results
+    pub cache: ExternalApiCacheConfig,
 }
 
 /// Moralis API configuration
@@ -953,6 +979,11 @@ impl ServerConfig {
             )?
             .set_default("external_apis.pinax.max_retries", DEFAULT_MAX_RETRIES)?
             .set_default("external_apis.pinax.enabled", false)?
+            // External API cache defaults
+            .set_default("external_apis.cache.enabled", true)?
+            .set_default("external_apis.cache.ttl_seconds", 21600i64)? // 6 hours
+            .set_default("external_apis.cache.max_entries", 50000i64)?
+            .set_default("external_apis.cache.cleanup_interval_seconds", 3600i64)? // 1 hour
             // Spam predictor defaults
             .set_default("spam_predictor.openai_api_key", "test-openai-key")?
             .set_default("spam_predictor.openai_base_url", None::<String>)?

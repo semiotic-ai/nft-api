@@ -948,6 +948,7 @@ dependencies = [
  "alloy-primitives",
  "anyhow",
  "api-client",
+ "dashmap",
  "mockall",
  "reqwest",
  "serde",

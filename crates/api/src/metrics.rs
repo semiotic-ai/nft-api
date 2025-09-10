@@ -14,8 +14,8 @@ use axum::{
     response::Response,
 };
 use prometheus::{
-    Encoder, HistogramVec, IntCounterVec, TextEncoder, register_histogram_vec,
-    register_int_counter_vec,
+    Encoder, Gauge, HistogramVec, IntCounterVec, TextEncoder, register_gauge,
+    register_histogram_vec, register_int_counter_vec,
 };
 use shared_types::ChainId;
 
@@ -60,6 +60,43 @@ pub static CONCURRENT_BATCH_DURATION: LazyLock<HistogramVec> = LazyLock::new(|| 
         vec![0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0]
     )
     .expect("Failed to create concurrent batch duration histogram")
+});
+
+/// External API cache hit/miss counters
+pub static CACHE_OPERATIONS: LazyLock<IntCounterVec> = LazyLock::new(|| {
+    register_int_counter_vec!(
+        "nft_api_cache_operations_total",
+        "Total number of cache operations",
+        &["operation", "provider"]
+    )
+    .expect("Failed to create cache operations counter vec")
+});
+
+/// Cache utilization gauge
+pub static CACHE_UTILIZATION: LazyLock<Gauge> = LazyLock::new(|| {
+    register_gauge!(
+        "nft_api_cache_utilization_ratio",
+        "Current cache utilization as a ratio (0.0 to 1.0)"
+    )
+    .expect("Failed to create cache utilization gauge")
+});
+
+/// Cache hit rate gauge
+pub static CACHE_HIT_RATE: LazyLock<Gauge> = LazyLock::new(|| {
+    register_gauge!(
+        "nft_api_cache_hit_rate",
+        "Cache hit rate as a ratio (0.0 to 1.0)"
+    )
+    .expect("Failed to create cache hit rate gauge")
+});
+
+/// Cache size gauge
+pub static CACHE_SIZE: LazyLock<Gauge> = LazyLock::new(|| {
+    register_gauge!(
+        "nft_api_cache_entries_count",
+        "Current number of entries in cache"
+    )
+    .expect("Failed to create cache size gauge")
 });
 
 /// Increment the requests counter with `chain_id` label
@@ -109,6 +146,30 @@ pub fn observe_concurrent_batch_duration(
     CONCURRENT_BATCH_DURATION
         .with_label_values(&[chain_id_str, batch_size_category])
         .observe(duration_secs);
+}
+
+/// Record cache operation metrics
+///
+/// # Arguments
+/// * `operation` - The cache operation (hit, miss, store, eviction, expired)
+/// * `provider` - The API provider (moralis, pinax, or general)
+pub fn record_cache_operation(operation: &str, provider: &str) {
+    CACHE_OPERATIONS
+        .with_label_values(&[operation, provider])
+        .inc();
+}
+
+/// Update cache utilization metrics
+///
+/// # Arguments
+/// * `utilization_ratio` - Current cache utilization as ratio (0.0 to 1.0)
+/// * `hit_rate` - Cache hit rate as ratio (0.0 to 1.0)
+/// * `entry_count` - Current number of entries in cache
+pub fn update_cache_metrics(utilization_ratio: f64, hit_rate: f64, entry_count: usize) {
+    CACHE_UTILIZATION.set(utilization_ratio);
+    CACHE_HIT_RATE.set(hit_rate);
+    #[allow(clippy::cast_precision_loss)]
+    CACHE_SIZE.set(entry_count as f64);
 }
 
 /// Axum handler that exports metrics in Prometheus text format

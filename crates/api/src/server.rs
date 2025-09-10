@@ -12,12 +12,12 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use axum::{Router, http::HeaderName, routing::get};
 use external_apis::{
-    ApiRegistry, MoralisClient, MoralisConfig as ExternalMoralisConfig, PerChainMoralisConfig,
-    PerChainPinaxConfig, PinaxClient, PinaxConfig as ExternalPinaxConfig,
+    ApiRegistry, MetadataCache, MoralisClient, MoralisConfig as ExternalMoralisConfig,
+    PerChainMoralisConfig, PerChainPinaxConfig, PinaxClient, PinaxConfig as ExternalPinaxConfig,
 };
 use hyper::Request;
 use spam_predictor::{SpamPredictor, SpamPredictorConfig};
-use tokio::net::TcpListener;
+use tokio::{net::TcpListener, time::interval};
 use tokio_util::sync::CancellationToken;
 use tower::ServiceBuilder;
 use tower_http::{
@@ -179,7 +179,45 @@ impl Server {
             None
         };
 
-        ApiRegistry::with_clients(moralis_client, pinax_client)
+        // Create cache with configuration
+        let cache = if config.external_apis.cache.enabled {
+            MetadataCache::with_settings(
+                Duration::from_secs(config.external_apis.cache.ttl_seconds),
+                config.external_apis.cache.max_entries,
+            )
+        } else {
+            // Use minimal cache settings when disabled
+            MetadataCache::with_settings(Duration::from_secs(1), 1)
+        };
+
+        ApiRegistry::with_clients_and_cache(moralis_client, pinax_client, cache)
+    }
+
+    /// Start background task to periodically update cache metrics
+    fn start_cache_metrics_task(
+        api_registry: Arc<ApiRegistry>,
+        cancellation_token: CancellationToken,
+    ) {
+        tokio::spawn(async move {
+            let mut interval = interval(Duration::from_secs(30)); // Update every 30 seconds
+
+            loop {
+                tokio::select! {
+                    () = cancellation_token.cancelled() => {
+                        info!("cache metrics task cancelled");
+                        break;
+                    }
+                    _ = interval.tick() => {
+                        let stats = api_registry.cache_stats();
+                        crate::metrics::update_cache_metrics(
+                            stats.utilization_rate,
+                            stats.hit_rate,
+                            stats.entry_count,
+                        );
+                    }
+                }
+            }
+        });
     }
 
     /// Create spam predictor from server configuration
@@ -252,10 +290,14 @@ impl Server {
         let cancellation_token = CancellationToken::new();
         let state = ServerState::new(
             config.clone(),
-            api_registry,
+            api_registry.clone(),
             spam_predictor,
             cancellation_token.child_token(),
         );
+
+        // Start background task to update cache metrics
+        Self::start_cache_metrics_task(api_registry.clone(), cancellation_token.child_token());
+
         let router = Self::create_router(state.clone());
 
         Ok(Self {
