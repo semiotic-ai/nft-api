@@ -14,7 +14,10 @@ use shared_types::{ChainId, ChainImplementationStatus};
 use utoipa::OpenApi;
 
 use crate::{
-    routes::handlers::{ContractStatusRequest, ContractStatusResponse, ContractStatusResult},
+    routes::handlers::{
+        ChainInfo, ChainsResponse, ContractStatusRequest, ContractStatusResponse,
+        ContractStatusResult,
+    },
     state::{HealthCheck, HealthStatus},
 };
 
@@ -39,12 +42,15 @@ use crate::{
     ),
     paths(
         crate::routes::handlers::health_handler,
+        crate::routes::handlers::chains_handler,
         crate::routes::handlers::contract_status_handler,
     ),
     components(
         schemas(
             ChainId,
+            ChainInfo,
             ChainImplementationStatus,
+            ChainsResponse,
             ContractStatusRequest,
             ContractStatusResponse,
             ContractStatusResult,
@@ -54,6 +60,7 @@ use crate::{
     ),
     tags(
         (name = "health", description = "System health monitoring - Check API service status, external API client health, chain-specific configurations, and internal service availability. Includes comprehensive chain health reporting with capability validation. Used for monitoring, alerting, and chain status verification."),
+        (name = "chains", description = "Blockchain network information - Provides information about all supported blockchain networks and their capabilities."),
         (name = "contracts", description = "Multi-chain blockchain contract analysis - AI-powered spam detection for NFT contracts across Ethereum, Polygon, Base, Avalanche, and Arbitrum networks. Utilizes chain-specific external data sources (Moralis API, Pinax Analytics) with intelligent capability validation and comprehensive error handling. Supports batch analysis and provides detailed chain-specific response messages.")
     )
 )]

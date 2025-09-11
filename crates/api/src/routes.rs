@@ -12,7 +12,7 @@ use axum::{
     Router, middleware,
     routing::{get, post},
 };
-use handlers::{contract_status_handler, health_handler};
+use handlers::{chains_handler, contract_status_handler, health_handler};
 
 use crate::{
     middleware::{RateLimiter, chain_validation_middleware, rate_limiting_middleware},
@@ -32,7 +32,9 @@ pub fn create_routes(rate_limiter: RateLimiter) -> Router<ServerState> {
         .route("/swagger-ui", get(swagger_ui));
 
     // API endpoints - conditionally apply rate limiting
-    let mut api_routes = Router::new().route("/contract/status", post(contract_status_handler));
+    let mut api_routes = Router::new()
+        .route("/chains", get(chains_handler))
+        .route("/contract/status", post(contract_status_handler));
 
     // Add chain validation middleware (always enabled for chain-specific endpoints)
     api_routes = api_routes.layer(middleware::from_fn(chain_validation_middleware));

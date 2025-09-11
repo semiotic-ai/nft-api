@@ -702,3 +702,123 @@ async fn perform_spam_analysis(
 
     result
 }
+
+/// Supported chain information
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[schema(
+    examples(
+        json!({
+            "name": "Ethereum",
+            "id": 1
+        }),
+        json!({
+            "name": "Polygon",
+            "id": 137
+        }),
+        json!({
+            "name": "Base",
+            "id": 8453
+        }),
+        json!({
+            "name": "Avalanche",
+            "id": 43114
+        }),
+        json!({
+            "name": "Arbitrum",
+            "id": 42161
+        })
+    )
+)]
+pub struct ChainInfo {
+    /// Human-readable name of the chain
+    #[schema(example = "Ethereum")]
+    pub name: String,
+    /// Numeric chain identifier
+    #[schema(example = 1)]
+    pub id: u64,
+}
+
+/// Response from the chains endpoint
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[schema(
+    examples(
+        json!({
+            "chains": [
+                {
+                    "name": "Ethereum",
+                    "id": 1
+                },
+                {
+                    "name": "Polygon",
+                    "id": 137
+                },
+                {
+                    "name": "Base",
+                    "id": 8453
+                },
+                {
+                    "name": "Avalanche",
+                    "id": 43114
+                },
+                {
+                    "name": "Arbitrum",
+                    "id": 42161
+                }
+            ]
+        })
+    )
+)]
+pub struct ChainsResponse {
+    /// List of supported chains
+    pub chains: Vec<ChainInfo>,
+}
+
+/// Get supported chains
+///
+/// Returns a list of all blockchain networks supported by the API.
+#[utoipa::path(
+    get,
+    path = "/v1/chains",
+    tag = "chains",
+    summary = "Get supported chains",
+    description = "Returns a list of all supported blockchain networks with their names and chain IDs.",
+    responses(
+        (status = 200, description = "List of supported chains", body = ChainsResponse,
+            example = json!({
+                "chains": [
+                    {
+                        "name": "Ethereum",
+                        "id": 1
+                    },
+                    {
+                        "name": "Polygon",
+                        "id": 137
+                    },
+                    {
+                        "name": "Base",
+                        "id": 8453
+                    },
+                    {
+                        "name": "Avalanche",
+                        "id": 43114
+                    },
+                    {
+                        "name": "Arbitrum",
+                        "id": 42161
+                    }
+                ]
+            })
+        )
+    )
+)]
+pub async fn chains_handler() -> Result<impl IntoResponse, ServerError> {
+    let chains: Vec<ChainInfo> = ChainId::all()
+        .iter()
+        .map(|&chain_id| ChainInfo {
+            name: chain_id.name().to_string(),
+            id: chain_id.chain_id(),
+        })
+        .collect();
+
+    Ok(Json(ChainsResponse { chains }))
+}
